@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}CVBoost{% endblock %} | CVBoost</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- Navigation dynamique : change selon que l'utilisateur est connecté ou non -->
+    <header class="navbar">
+        <a class="logo" href="{{ url_for('main.index') }}">CVBoost</a>
+        <nav>
+            <a href="{{ url_for('main.index') }}">Accueil</a>
+            {% if current_user.is_authenticated %}
+                <span class="user">Bonjour, {{ current_user.username }}</span>
+                <a href="{{ url_for('main.logout') }}">Déconnexion</a>
+            {% else %}
+                <a href="{{ url_for('main.login') }}">Connexion</a>
+                <a class="btn" href="{{ url_for('main.register') }}">Inscription</a>
+            {% endif %}
+        </nav>
+    </header>
+
+    <main class="container">
+        <!-- Messages flash (succès, erreurs...) envoyés par les routes -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">CVBoost · TalentIA</footer>
+</body>
+</html>

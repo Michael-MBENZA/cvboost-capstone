@@ -23,6 +23,9 @@ def create_app(config_class=Config):
     db.init_app(app)
     login_manager.init_app(app)
 
+    from .routes import bp  # NOUVEAU
+    app.register_blueprint(bp)  # NOUVEAU
+
     with app.app_context():
         from . import models  # noqa: F401  (enregistre les tables)
         db.create_all()

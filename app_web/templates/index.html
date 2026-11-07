@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Accueil{% endblock %}
+
+{% block content %}
+<section class="card">
+    <h1>Bienvenue sur CVBoost</h1>
+    <p>Déposez votre CV et laissez l'IA vous aider à décrocher le poste.</p>
+
+    {% if current_user.is_authenticated %}
+        <p>Vous êtes connecté en tant que <strong>{{ current_user.username }}</strong>.</p>
+    {% else %}
+        <p>
+            <a class="btn" href="{{ url_for('main.register') }}">Créer un compte</a>
+            <a href="{{ url_for('main.login') }}">J'ai déjà un compte</a>
+        </p>
+    {% endif %}
+</section>
+{% endblock %}
