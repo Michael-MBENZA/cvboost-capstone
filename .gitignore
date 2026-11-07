@@ -1,0 +1,29 @@
+# Environnement virtuel
+env/
+
+# Secrets
+.env
+
+# Caches Python et tests
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Bases de données (générées au lancement)
+database/*.db
+*.db
+
+# Fichiers déposés par les utilisateurs
+uploads/*
+!uploads/.gitkeep
+
+# Audio généré par l'API (Sprint 4)
+api_service/temp_audio/*
+!api_service/temp_audio/.gitkeep
+
+# Logs
+logs/
+
+# Éditeurs
+.vscode/
+.claude/
