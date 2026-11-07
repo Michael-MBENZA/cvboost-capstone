@@ -1,0 +1,51 @@
+from datetime import datetime, timezone
+
+from flask_login import UserMixin
+from werkzeug.security import generate_password_hash, check_password_hash
+
+from . import db, login_manager
+
+
+def maintenant():
+    return datetime.now(timezone.utc)
+
+
+class User(UserMixin, db.Model):
+    __tablename__ = "users"
+
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    created_at = db.Column(db.DateTime, default=maintenant)
+
+    # Un utilisateur possède plusieurs documents
+    documents = db.relationship(
+        "Document", backref="owner", lazy=True, cascade="all, delete-orphan"
+    )
+
+    def set_password(self, password):
+        # Werkzeug transforme le mot de passe en hash (irréversible)
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+
+class Document(db.Model):
+    __tablename__ = "documents"
+
+    id = db.Column(db.Integer, primary_key=True)
+    original_name = db.Column(db.String(255), nullable=False)  # ex : mon_cv.pdf
+    stored_name = db.Column(db.String(64), unique=True, nullable=False)  # ex : 3f2a...e1.pdf
+    file_type = db.Column(db.String(10), nullable=False)  # pdf ou docx
+    size_bytes = db.Column(db.Integer, nullable=False)
+    uploaded_at = db.Column(db.DateTime, default=maintenant)
+
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    # Flask-Login appelle cette fonction pour retrouver l'utilisateur de la session
+    return db.session.get(User, int(user_id))
