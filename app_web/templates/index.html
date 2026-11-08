@@ -9,6 +9,10 @@
 
     {% if current_user.is_authenticated %}
         <p>Vous êtes connecté en tant que <strong>{{ current_user.username }}</strong>.</p>
+        <p>
+            <a class="btn" href="{{ url_for('main.upload') }}">Déposer mon CV</a>
+            <a href="{{ url_for('main.history') }}">Voir mon historique</a>
+        </p>
     {% else %}
         <p>
             <a class="btn" href="{{ url_for('main.register') }}">Créer un compte</a>

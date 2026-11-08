@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Mon historique{% endblock %}
+
+{% block content %}
+<section class="card">
+    <h1>Mon historique</h1>
+
+    {% if documents %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Fichier</th>
+                    <th>Type</th>
+                    <th>Taille</th>
+                    <th>Déposé le</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for doc in documents %}
+                <tr>
+                    <td>{{ doc.original_name }}</td>
+                    <td>{{ doc.file_type | upper }}</td>
+                    <td>{{ (doc.size_bytes / 1024) | round(1) }} Ko</td>
+                    <td>{{ doc.uploaded_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>Vous n'avez encore déposé aucun CV.</p>
+    {% endif %}
+
+    <a class="btn" href="{{ url_for('main.upload') }}">Déposer un CV</a>
+</section>
+{% endblock %}

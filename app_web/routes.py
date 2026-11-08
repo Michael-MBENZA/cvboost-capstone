@@ -1,10 +1,27 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+import os
+import uuid
+
+from flask import (
+    Blueprint, render_template, redirect, url_for, flash, request, current_app
+)
 from flask_login import login_user, logout_user, login_required, current_user
+from werkzeug.utils import secure_filename
 
 from . import db
-from .models import User
+from .models import User, Document
 
 bp = Blueprint("main", __name__)
+
+# Premiers octets attendus pour chaque type de fichier ("signature")
+# PDF commence par %PDF, DOCX est une archive ZIP qui commence par PK
+SIGNATURES = {"pdf": b"%PDF", "docx": b"PK\x03\x04"}
+
+
+def extension_de(filename):
+    """Renvoie l'extension en minuscules ('pdf', 'docx'...) ou ''."""
+    if "." not in filename:
+        return ""
+    return filename.rsplit(".", 1)[1].lower()
 
 
 @bp.route("/")
@@ -77,3 +94,69 @@ def logout():
     logout_user()  # ferme la session
     flash("Vous êtes déconnecté.", "info")
     return redirect(url_for("main.index"))
+
+
+@bp.route("/upload", methods=["GET", "POST"])
+@login_required
+def upload():
+    if request.method == "POST":
+        fichier = request.files.get("cv")
+
+        # 1. Un fichier a-t-il été choisi ?
+        if not fichier or fichier.filename == "":
+            flash("Veuillez choisir un fichier.", "danger")
+            return redirect(url_for("main.upload"))
+
+        # 2. L'extension est-elle autorisée (pdf, docx) ?
+        ext = extension_de(fichier.filename)
+        if ext not in current_app.config["ALLOWED_EXTENSIONS"]:
+            flash("Format refusé : seuls les fichiers PDF et DOCX sont acceptés.", "danger")
+            return redirect(url_for("main.upload"))
+
+        # 3. Le contenu correspond-il vraiment à l'extension ?
+        #    (un .exe renommé en .pdf sera refusé)
+        debut = fichier.stream.read(4)
+        fichier.stream.seek(0)
+        if debut != SIGNATURES[ext]:
+            flash("Le contenu du fichier ne correspond pas à un vrai PDF/DOCX.", "danger")
+            return redirect(url_for("main.upload"))
+
+        # 4. Renommage UUID : nom unique et imprévisible sur le disque
+        stored_name = f"{uuid.uuid4().hex}.{ext}"
+        chemin = os.path.join(current_app.config["UPLOAD_FOLDER"], stored_name)
+        fichier.save(chemin)
+
+        # 5. Enregistrement en base
+        doc = Document(
+            original_name=secure_filename(fichier.filename) or f"cv.{ext}",
+            stored_name=stored_name,
+            file_type=ext,
+            size_bytes=os.path.getsize(chemin),
+            owner=current_user,
+        )
+        db.session.add(doc)
+        db.session.commit()
+
+        flash("CV téléversé avec succès !", "success")
+        return redirect(url_for("main.history"))
+
+    return render_template("upload.html")
+
+
+@bp.route("/history")
+@login_required
+def history():
+    # Uniquement les documents de l'utilisateur connecté, du plus récent au plus ancien
+    documents = (
+        Document.query.filter_by(user_id=current_user.id)
+        .order_by(Document.uploaded_at.desc())
+        .all()
+    )
+    return render_template("history.html", documents=documents)
+
+
+@bp.app_errorhandler(413)
+def fichier_trop_gros(erreur):
+    # Déclenché automatiquement par Flask si le fichier dépasse MAX_CONTENT_LENGTH (5 Mo)
+    flash("Fichier trop volumineux : 5 Mo maximum.", "danger")
+    return redirect(url_for("main.upload"))

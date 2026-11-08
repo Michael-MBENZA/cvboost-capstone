@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Déposer un CV{% endblock %}
+
+{% block content %}
+<section class="card form-card">
+    <h1>Déposer mon CV</h1>
+    <p>Formats acceptés : <strong>PDF</strong> ou <strong>DOCX</strong>, 5 Mo maximum.</p>
+
+    <!-- enctype obligatoire pour envoyer un fichier -->
+    <form method="POST" enctype="multipart/form-data">
+        <label for="cv">Fichier</label>
+        <input type="file" id="cv" name="cv" accept=".pdf,.docx" required>
+
+        <button type="submit" class="btn">Téléverser</button>
+    </form>
+</section>
+{% endblock %}
