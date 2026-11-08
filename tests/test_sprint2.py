@@ -115,3 +115,61 @@ def test_scraper_parse_le_detail_et_le_salaire():
     assert "<li>" not in detail["description"]  # le HTML a été retiré
     assert detail["date_limite"] == "2026-11-30"
     assert "1 500 USD" in detail["salaire"]
+
+
+# ---------- Nettoyage Pandas ----------
+
+def test_conversion_des_salaires():
+    from data_pipeline.pandas_cleaning import convertir_salaire
+    assert convertir_salaire("Salaire : 1 500 USD par mois") == 1500.0
+    assert convertir_salaire("Rémunération : 1.200 $") == 1200.0
+    assert convertir_salaire("2 850 000 FC") == 1000.0
+    assert convertir_salaire("Salaire annuel : 24 000 USD") == 2000.0
+    assert convertir_salaire('{"currency": "USD", "value": {"value": 36000, "unitText": "YEAR"}}') == 3000.0
+    assert convertir_salaire("") is None
+    assert convertir_salaire("à négocier") is None
+
+
+def test_province_et_ville():
+    from data_pipeline.pandas_cleaning import province_de, ville_de
+    assert province_de("Beni (Nord-Kivu)") == "Nord-Kivu"
+    assert province_de("Lubumbashi") == "Haut-Katanga"
+    assert province_de("RD Congo") == "National"
+    assert province_de("") == "Non précisé"
+    assert ville_de("Tshikapa / Mweka") == "Tshikapa"
+    assert ville_de("Nord-Kivu") == "Non précisé"   # une province n'est pas une ville
+    assert ville_de("Kinshasa") == "Kinshasa"       # sauf Kinshasa (ville-province)
+
+
+def test_nettoyage_complet():
+    import pandas as pd
+    from data_pipeline.pandas_cleaning import nettoyer
+    longue = "Missions : développer des API en Python et SQL, travailler en anglais avec l'équipe. " * 3
+    brut = pd.DataFrame([
+        {"reference": "OEM1", "intitule": "Développeur  Python ", "entreprise": "ACME", "lieu": "Goma",
+         "date_publication": "05.11.2026", "date_limite": "2026-11-30", "salaire": "Salaire : 1 500 USD",
+         "description": longue, "url": "u1"},
+        {"reference": "OEM1", "intitule": "Développeur Python", "entreprise": "ACME", "lieu": "Goma",  # même référence
+         "date_publication": "05.11.2026", "date_limite": "2026-11-30", "salaire": "", "description": longue, "url": "u1"},
+        {"reference": "OEM2", "intitule": "Comptable", "entreprise": "", "lieu": "RD Congo",
+         "date_publication": "01.11.2026", "date_limite": "2026-11-10", "salaire": "",
+         "description": "Comptable", "url": "u2"},  # description = titre -> indisponible
+    ])
+    propre, rapport = nettoyer(brut)
+
+    assert rapport["doublons_supprimes"] == 1
+    assert len(propre) == 2
+    dev = propre[propre["reference"] == "OEM1"].iloc[0]
+    assert dev["intitule"] == "Développeur Python"           # espaces nettoyés
+    assert dev["province"] == "Nord-Kivu"
+    assert dev["salaire_usd_mensuel"] == 1500.0
+    assert dev["duree_candidature_jours"] == 25
+    assert dev["comp_python"] == 1 and dev["comp_sql"] == 1 and dev["comp_anglais"] == 1
+    assert dev["comp_comptabilite"] == 0
+
+    compta = propre[propre["reference"] == "OEM2"].iloc[0]
+    assert compta["entreprise"] == "Non précisé"              # valeur manquante remplie
+    assert compta["province"] == "National"
+    assert bool(compta["description_disponible"]) is False
+    assert bool(compta["salaire_indique"]) is False
+    assert compta["comp_comptabilite"] == 1                   # trouvée dans le titre
