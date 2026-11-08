@@ -83,3 +83,35 @@ def test_analytics_kpi_group_by_having(tmp_path):
     conn = sqlite3.connect(analytics)
     assert conn.execute("SELECT COUNT(*) FROM kpi_snapshots").fetchone()[0] == 4
     conn.close()
+
+
+# ---------- Scraping (hors ligne, sur des pages HTML d'exemple) ----------
+
+FIXTURES = os.path.join(BASE_DIR, "tests", "fixtures")
+
+
+def lire_fixture(nom):
+    with open(os.path.join(FIXTURES, nom), encoding="utf-8") as f:
+        return f.read()
+
+
+def test_scraper_parse_la_liste_des_offres():
+    from data_pipeline.scraper_jobs import parser_liste
+    offres = parser_liste(lire_fixture("liste_offres.html"))
+    assert len(offres) == 2
+    premiere = offres[0]
+    assert premiere["reference"] == "OEM1001"
+    assert premiere["intitule"] == "Développeur Python"
+    assert premiere["entreprise"] == "ACME RDC"
+    assert premiere["lieu"] == "Kinshasa"
+    assert premiere["date_publication"] == "05.11.2026"
+    assert premiere["url"] == "https://www.mediacongo.net/emploi-societe-1001_acme_developpeur_python.html"
+
+
+def test_scraper_parse_le_detail_et_le_salaire():
+    from data_pipeline.scraper_jobs import parser_detail
+    detail = parser_detail(lire_fixture("detail_offre.html"))
+    assert "Flask et SQL" in detail["description"]
+    assert "<li>" not in detail["description"]  # le HTML a été retiré
+    assert detail["date_limite"] == "2026-11-30"
+    assert "1 500 USD" in detail["salaire"]
