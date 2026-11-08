@@ -24,6 +24,10 @@ api_service/temp_audio/*
 # Logs
 logs/
 
+# Sorties de l'audit des logs (régénérées par data_pipeline/logs_parser.py)
+data/processed/upload_events.csv
+data/reports/
+
 # Éditeurs
 .vscode/
 .claude/

@@ -1,0 +1,14 @@
+2026-11-03 08:15:02 | user=1 | ip=41.243.10.12 | statut=ACCEPTE | motif=OK | taille=248792 | fichier=CV_Michael_Mbenza.pdf
+2026-11-03 08:40:11 | user=2 | ip=41.243.10.55 | statut=ACCEPTE | motif=OK | taille=98211 | fichier=cv grace kabila.docx
+2026-11-03 09:02:47 | user=3 | ip=197.157.20.4 | statut=REFUSE | motif=EXTENSION_INTERDITE | taille=65338 | fichier=photo_identite.png
+2026-11-03 09:03:30 | user=3 | ip=197.157.20.4 | statut=ACCEPTE | motif=OK | taille=150002 | fichier=CV_Jonas.pdf
+2026-11-04 14:21:09 | user=4 | ip=102.68.33.7 | statut=REFUSE | motif=SIGNATURE_INVALIDE | taille=4096 | fichier=cv_urgent.pdf
+2026-11-04 14:21:58 | user=4 | ip=102.68.33.7 | statut=REFUSE | motif=EXTENSION_INTERDITE | taille=73728 | fichier=cv.pdf.exe
+2026-11-04 14:22:40 | user=4 | ip=102.68.33.7 | statut=REFUSE | motif=EXTENSION_INTERDITE | taille=2048 | fichier=install.bat
+2026-11-04 14:23:15 | user=4 | ip=102.68.33.7 | statut=REFUSE | motif=SIGNATURE_INVALIDE | taille=4096 | fichier=lettre.docx
+2026-11-05 10:05:00 | user=2 | ip=41.243.10.55 | statut=REFUSE | motif=TROP_VOLUMINEUX | taille=7340032 | fichier=-
+2026-11-05 10:06:12 | user=2 | ip=41.243.10.55 | statut=ACCEPTE | motif=OK | taille=1048576 | fichier=cv grace kabila compresse.pdf
+2026-11-06 16:45:33 | user=5 | ip=196.46.110.9 | statut=ACCEPTE | motif=OK | taille=320450 | fichier=Curriculum_Vitae_Esther.docx
+ligne corrompue sans le bon format
+2026-11-07 11:11:11 | user=1 | ip=41.243.10.12 | statut=REFUSE | motif=AUCUN_FICHIER | taille=0 | fichier=-
+2026-11-07 11:12:40 | user=1 | ip=41.243.10.12 | statut=ACCEPTE | motif=OK | taille=251004 | fichier=CV_Michael_Mbenza_v2.pdf
