@@ -3,21 +3,40 @@
 {% block title %}Accueil{% endblock %}
 
 {% block content %}
-<section class="card">
-    <h1>Bienvenue sur CVBoost</h1>
-    <p>Déposez votre CV et laissez l'IA vous aider à décrocher le poste.</p>
-
+<section class="hero">
     {% if current_user.is_authenticated %}
-        <p>Vous êtes connecté en tant que <strong>{{ current_user.username }}</strong>.</p>
-        <p>
-            <a class="btn" href="{{ url_for('main.upload') }}">Déposer mon CV</a>
-            <a href="{{ url_for('main.history') }}">Voir mon historique</a>
-        </p>
+        <h1>Bon retour, {{ current_user.username }} 👋</h1>
+        <p>Déposez un nouveau CV ou retrouvez ceux que vous avez déjà envoyés.</p>
+        <div class="hero-actions">
+            <a class="btn btn-light" href="{{ url_for('main.upload') }}">Déposer mon CV</a>
+            <a class="btn btn-outline" href="{{ url_for('main.history') }}">Voir mon historique</a>
+        </div>
     {% else %}
-        <p>
-            <a class="btn" href="{{ url_for('main.register') }}">Créer un compte</a>
-            <a href="{{ url_for('main.login') }}">J'ai déjà un compte</a>
-        </p>
+        <h1>Décrochez le poste qui vous correspond</h1>
+        <p>Déposez votre CV sur CVBoost et laissez l'intelligence artificielle vous aider à vous démarquer auprès des recruteurs.</p>
+        <div class="hero-actions">
+            <a class="btn btn-light" href="{{ url_for('main.register') }}">Créer mon compte gratuit</a>
+            <a class="btn btn-outline" href="{{ url_for('main.login') }}">J'ai déjà un compte</a>
+        </div>
     {% endif %}
+</section>
+
+<h2 class="section-title">Comment ça marche ?</h2>
+<section class="features">
+    <article class="card feature">
+        <span class="icon">📝</span>
+        <h3>1. Créez votre compte</h3>
+        <p>Inscription en quelques secondes. Votre mot de passe est chiffré et vos données restent privées.</p>
+    </article>
+    <article class="card feature">
+        <span class="icon">📄</span>
+        <h3>2. Déposez votre CV</h3>
+        <p>Formats PDF ou DOCX jusqu'à 5 Mo. Chaque fichier est vérifié et stocké de façon sécurisée.</p>
+    </article>
+    <article class="card feature">
+        <span class="icon">📊</span>
+        <h3>3. Suivez vos candidatures</h3>
+        <p>Retrouvez tous vos CV dans votre espace personnel, classés du plus récent au plus ancien.</p>
+    </article>
 </section>
 {% endblock %}

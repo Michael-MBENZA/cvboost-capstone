@@ -3,16 +3,28 @@
 {% block title %}Déposer un CV{% endblock %}
 
 {% block content %}
-<section class="card form-card">
-    <h1>Déposer mon CV</h1>
-    <p>Formats acceptés : <strong>PDF</strong> ou <strong>DOCX</strong>, 5 Mo maximum.</p>
+<div class="auth-wrapper">
+    <section class="card auth-card">
+        <h1>Déposer mon CV</h1>
+        <p class="subtitle">Ajoutez votre CV à votre espace candidat.</p>
 
-    <!-- enctype obligatoire pour envoyer un fichier -->
-    <form method="POST" enctype="multipart/form-data">
-        <label for="cv">Fichier</label>
-        <input type="file" id="cv" name="cv" accept=".pdf,.docx" required>
+        <!-- enctype obligatoire pour envoyer un fichier -->
+        <form method="POST" enctype="multipart/form-data">
+            <label class="dropzone" for="cv">
+                <span class="icon">📄</span>
+                <strong>Choisissez votre fichier</strong>
+                <small>PDF ou DOCX, 5 Mo maximum</small>
+                <input type="file" id="cv" name="cv" accept=".pdf,.docx" required>
+            </label>
 
-        <button type="submit" class="btn">Téléverser</button>
-    </form>
-</section>
+            <button type="submit" class="btn btn-block">Téléverser mon CV</button>
+        </form>
+
+        <ul class="rules">
+            <li>Formats acceptés : PDF et DOCX</li>
+            <li>Taille maximale : 5 Mo</li>
+            <li>Fichier renommé et stocké de façon sécurisée</li>
+        </ul>
+    </section>
+</div>
 {% endblock %}

@@ -3,34 +3,44 @@
 {% block title %}Mon historique{% endblock %}
 
 {% block content %}
+<div class="page-header">
+    <div>
+        <h1>Mon historique</h1>
+        <p>{{ documents | length }} CV déposé(s)</p>
+    </div>
+    <a class="btn" href="{{ url_for('main.upload') }}">+ Déposer un CV</a>
+</div>
+
 <section class="card">
-    <h1>Mon historique</h1>
-
     {% if documents %}
-        <table>
-            <thead>
-                <tr>
-                    <th>Fichier</th>
-                    <th>Type</th>
-                    <th>Taille</th>
-                    <th>Déposé le</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for doc in documents %}
-                <tr>
-                    <td>{{ doc.original_name }}</td>
-                    <td>{{ doc.file_type | upper }}</td>
-                    <td>{{ (doc.size_bytes / 1024) | round(1) }} Ko</td>
-                    <td>{{ doc.uploaded_at.strftime('%d/%m/%Y %H:%M') }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Fichier</th>
+                        <th>Type</th>
+                        <th>Taille</th>
+                        <th>Déposé le</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for doc in documents %}
+                    <tr>
+                        <td class="file-name">{{ doc.original_name }}</td>
+                        <td><span class="badge badge-{{ doc.file_type }}">{{ doc.file_type | upper }}</span></td>
+                        <td>{{ (doc.size_bytes / 1024) | round(1) }} Ko</td>
+                        <td>{{ doc.uploaded_at.strftime('%d/%m/%Y à %H:%M') }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     {% else %}
-        <p>Vous n'avez encore déposé aucun CV.</p>
+        <div class="empty-state">
+            <span class="icon">📂</span>
+            <p>Vous n'avez encore déposé aucun CV.</p>
+            <a class="btn" href="{{ url_for('main.upload') }}">Déposer mon premier CV</a>
+        </div>
     {% endif %}
-
-    <a class="btn" href="{{ url_for('main.upload') }}">Déposer un CV</a>
 </section>
 {% endblock %}

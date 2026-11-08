@@ -4,24 +4,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}CVBoost{% endblock %} | CVBoost</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
     <!-- Navigation dynamique : change selon que l'utilisateur est connecté ou non -->
     <header class="navbar">
-        <a class="logo" href="{{ url_for('main.index') }}">CVBoost</a>
-        <nav>
-            <a href="{{ url_for('main.index') }}">Accueil</a>
-            {% if current_user.is_authenticated %}
-                <a href="{{ url_for('main.upload') }}">Déposer un CV</a>
-                <a href="{{ url_for('main.history') }}">Mon historique</a>
-                <span class="user">Bonjour, {{ current_user.username }}</span>
-                <a href="{{ url_for('main.logout') }}">Déconnexion</a>
-            {% else %}
-                <a href="{{ url_for('main.login') }}">Connexion</a>
-                <a class="btn" href="{{ url_for('main.register') }}">Inscription</a>
-            {% endif %}
-        </nav>
+        <div class="navbar-inner">
+            <a class="logo" href="{{ url_for('main.index') }}">
+                <span class="logo-mark">CV</span> CVBoost
+            </a>
+            <nav class="nav-links">
+                <a href="{{ url_for('main.index') }}">Accueil</a>
+                {% if current_user.is_authenticated %}
+                    <a href="{{ url_for('main.upload') }}">Déposer un CV</a>
+                    <a href="{{ url_for('main.history') }}">Mon historique</a>
+                    <span class="user">
+                        <span class="avatar">{{ current_user.username[0] | upper }}</span>
+                        Bonjour, {{ current_user.username }}
+                    </span>
+                    <a href="{{ url_for('main.logout') }}">Déconnexion</a>
+                {% else %}
+                    <a href="{{ url_for('main.login') }}">Connexion</a>
+                    <a class="btn" href="{{ url_for('main.register') }}">Inscription</a>
+                {% endif %}
+            </nav>
+        </div>
     </header>
 
     <main class="container">
@@ -35,6 +45,11 @@
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="footer">CVBoost · TalentIA</footer>
+    <footer class="footer">
+        <div class="footer-inner">
+            <span><strong>CVBoost</strong> par TalentIA · La plateforme qui booste votre candidature</span>
+            <span>Kinshasa, RD Congo</span>
+        </div>
+    </footer>
 </body>
 </html>

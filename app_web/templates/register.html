@@ -3,23 +3,27 @@
 {% block title %}Inscription{% endblock %}
 
 {% block content %}
-<section class="card form-card">
-    <h1>Créer un compte</h1>
-    <form method="POST">
-        <label for="username">Nom d'utilisateur</label>
-        <input type="text" id="username" name="username" required value="{{ request.form.username }}">
+<div class="auth-wrapper">
+    <section class="card auth-card">
+        <h1>Créer mon compte</h1>
+        <p class="subtitle">Rejoignez CVBoost et mettez toutes les chances de votre côté.</p>
 
-        <label for="email">E-mail</label>
-        <input type="email" id="email" name="email" required value="{{ request.form.email }}">
+        <form method="POST">
+            <label for="username">Nom d'utilisateur</label>
+            <input type="text" id="username" name="username" required value="{{ request.form.username }}">
 
-        <label for="password">Mot de passe (8 caractères minimum)</label>
-        <input type="password" id="password" name="password" required minlength="8">
+            <label for="email">Adresse e-mail</label>
+            <input type="email" id="email" name="email" required value="{{ request.form.email }}" placeholder="nom@exemple.cd">
 
-        <label for="confirm">Confirmer le mot de passe</label>
-        <input type="password" id="confirm" name="confirm" required minlength="8">
+            <label for="password">Mot de passe <small>(8 caractères minimum)</small></label>
+            <input type="password" id="password" name="password" required minlength="8">
 
-        <button type="submit" class="btn">S'inscrire</button>
-    </form>
-    <p>Déjà inscrit ? <a href="{{ url_for('main.login') }}">Se connecter</a></p>
-</section>
+            <label for="confirm">Confirmer le mot de passe</label>
+            <input type="password" id="confirm" name="confirm" required minlength="8">
+
+            <button type="submit" class="btn btn-block">S'inscrire</button>
+        </form>
+        <p class="switch">Déjà inscrit ? <a href="{{ url_for('main.login') }}">Se connecter</a></p>
+    </section>
+</div>
 {% endblock %}
