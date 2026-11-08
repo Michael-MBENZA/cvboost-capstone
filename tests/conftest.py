@@ -12,6 +12,7 @@ def app(tmp_path):
         TESTING = True
         SQLALCHEMY_DATABASE_URI = "sqlite:///" + str(tmp_path / "test.db")
         UPLOAD_FOLDER = str(tmp_path / "uploads")
+        LOG_FOLDER = str(tmp_path / "logs")
 
     return create_app(TestConfig)
 

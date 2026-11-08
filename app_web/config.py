@@ -23,3 +23,6 @@ class Config:
     UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
     MAX_CONTENT_LENGTH = 5 * 1024 * 1024  # 5 Mo maximum
     ALLOWED_EXTENSIONS = {"pdf", "docx"}
+
+    # Journal des téléversements (lu par data_pipeline/logs_parser.py au Sprint 2)
+    LOG_FOLDER = os.path.join(BASE_DIR, "logs")

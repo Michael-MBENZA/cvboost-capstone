@@ -110,6 +110,17 @@ def test_upload_refuse_plus_de_5_mo(connecte, app):
         assert Document.query.count() == 0
 
 
+def test_chaque_tentative_est_journalisee(connecte, app):
+    envoyer(connecte, "cv.pdf", b"%PDF-1.4")
+    envoyer(connecte, "virus.pdf", b"MZ\x90\x00")
+    chemin = os.path.join(app.config["LOG_FOLDER"], "uploads.log")
+    with open(chemin, encoding="utf-8") as f:
+        lignes = f.read().splitlines()
+    assert len(lignes) == 2
+    assert "statut=ACCEPTE" in lignes[0] and "fichier=cv.pdf" in lignes[0]
+    assert "motif=SIGNATURE_INVALIDE" in lignes[1]
+
+
 # ---------- Historique ----------
 
 def test_historique_ne_montre_que_mes_cv(connecte, app):

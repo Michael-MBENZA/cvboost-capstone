@@ -24,6 +24,20 @@ def extension_de(filename):
     return filename.rsplit(".", 1)[1].lower()
 
 
+def journaliser(statut, motif, nom_fichier, taille):
+    """Écrit une ligne dans logs/uploads.log pour chaque tentative de téléversement.
+
+    Format : date | user=ID | ip=IP | statut=... | motif=... | taille=octets | fichier=nom
+    Le nom du fichier est mis en dernier car il peut contenir des espaces.
+    """
+    user_id = current_user.id if current_user.is_authenticated else "-"
+    nom_propre = nom_fichier.replace("|", "_").replace("\n", "_")
+    current_app.logger_uploads.info(
+        f"user={user_id} | ip={request.remote_addr} | statut={statut} | "
+        f"motif={motif} | taille={taille} | fichier={nom_propre}"
+    )
+
+
 @bp.route("/")
 def index():
     return render_template("index.html")
@@ -104,12 +118,19 @@ def upload():
 
         # 1. Un fichier a-t-il été choisi ?
         if not fichier or fichier.filename == "":
+            journaliser("REFUSE", "AUCUN_FICHIER", "-", 0)
             flash("Veuillez choisir un fichier.", "danger")
             return redirect(url_for("main.upload"))
+
+        # Taille réelle du fichier reçu (on va à la fin du flux, puis on revient au début)
+        fichier.stream.seek(0, os.SEEK_END)
+        taille = fichier.stream.tell()
+        fichier.stream.seek(0)
 
         # 2. L'extension est-elle autorisée (pdf, docx) ?
         ext = extension_de(fichier.filename)
         if ext not in current_app.config["ALLOWED_EXTENSIONS"]:
+            journaliser("REFUSE", "EXTENSION_INTERDITE", fichier.filename, taille)
             flash("Format refusé : seuls les fichiers PDF et DOCX sont acceptés.", "danger")
             return redirect(url_for("main.upload"))
 
@@ -118,6 +139,7 @@ def upload():
         debut = fichier.stream.read(4)
         fichier.stream.seek(0)
         if debut != SIGNATURES[ext]:
+            journaliser("REFUSE", "SIGNATURE_INVALIDE", fichier.filename, taille)
             flash("Le contenu du fichier ne correspond pas à un vrai PDF/DOCX.", "danger")
             return redirect(url_for("main.upload"))
 
@@ -137,6 +159,7 @@ def upload():
         db.session.add(doc)
         db.session.commit()
 
+        journaliser("ACCEPTE", "OK", fichier.filename, taille)
         flash("CV téléversé avec succès !", "success")
         return redirect(url_for("main.history"))
 
@@ -158,5 +181,6 @@ def history():
 @bp.app_errorhandler(413)
 def fichier_trop_gros(erreur):
     # Déclenché automatiquement par Flask si le fichier dépasse MAX_CONTENT_LENGTH (5 Mo)
+    journaliser("REFUSE", "TROP_VOLUMINEUX", "-", request.content_length or 0)
     flash("Fichier trop volumineux : 5 Mo maximum.", "danger")
     return redirect(url_for("main.upload"))
