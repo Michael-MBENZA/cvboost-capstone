@@ -31,3 +31,5 @@ data/reports/
 # Éditeurs
 .vscode/
 .claude/
+# Notes de travail (le document final sera livré en PDF)
+docs/
