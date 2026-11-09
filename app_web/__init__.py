@@ -3,12 +3,16 @@ import os
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
+from flask_wtf.csrf import CSRFProtect
 
 from .config import Config, BASE_DIR
 
 # Extensions créées une seule fois, branchées sur l'app dans create_app()
 db = SQLAlchemy()
 login_manager = LoginManager()
+# Protection CSRF : chaque formulaire POST doit renvoyer un jeton secret généré par le site.
+# Un site pirate ne connaît pas ce jeton, il ne peut donc pas faire agir un utilisateur connecté à sa place.
+csrf = CSRFProtect()
 login_manager.login_view = "main.login"  # page où rediriger si on n'est pas connecté
 login_manager.login_message = "Connectez-vous pour accéder à cette page."
 
@@ -44,6 +48,7 @@ def create_app(config_class=Config):
 
     db.init_app(app)
     login_manager.init_app(app)
+    csrf.init_app(app)
 
     from .routes import bp  # NOUVEAU
     app.register_blueprint(bp)  # NOUVEAU

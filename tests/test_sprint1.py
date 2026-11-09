@@ -57,16 +57,55 @@ def test_connexion_mauvais_mot_de_passe(client):
 def test_navigation_dynamique(connecte):
     page = connecte.get("/").get_data(as_text=True)
     assert "Déconnexion" in page
-    connecte.get("/logout")
+    connecte.post("/logout")
     page = connecte.get("/").get_data(as_text=True)
     assert "Connexion" in page and "Déconnexion" not in page
 
 
 def test_pages_protegees_sans_connexion(client):
-    for page in ["/upload", "/history", "/logout"]:
+    for page in ["/upload", "/history"]:
         reponse = client.get(page)
         assert reponse.status_code == 302
         assert "/login" in reponse.headers["Location"]
+    reponse = client.post("/logout")
+    assert reponse.status_code == 302 and "/login" in reponse.headers["Location"]
+
+
+def test_deconnexion_refuse_get(connecte):
+    # Un simple lien (GET) ne doit pas pouvoir déconnecter : seul le formulaire POST le peut
+    assert connecte.get("/logout").status_code == 405
+
+
+# ---------- Protection CSRF ----------
+
+def test_csrf_refuse_un_formulaire_sans_jeton(tmp_path):
+    from app_web import create_app
+    from app_web.config import Config
+
+    class ConfigCSRF(Config):  # configuration de test AVEC la protection CSRF active
+        TESTING = True
+        SQLALCHEMY_DATABASE_URI = "sqlite:///" + str(tmp_path / "csrf.db")
+        UPLOAD_FOLDER = str(tmp_path / "uploads")
+        LOG_FOLDER = str(tmp_path / "logs")
+
+    client = create_app(ConfigCSRF).test_client()
+    reponse = client.post("/login", data={"email": "a@a.cd", "password": "x"})
+    assert reponse.status_code == 400  # refusé : pas de jeton CSRF
+
+
+def test_csrf_jeton_present_dans_les_formulaires(tmp_path):
+    from app_web import create_app
+    from app_web.config import Config
+
+    class ConfigCSRF(Config):
+        TESTING = True
+        SQLALCHEMY_DATABASE_URI = "sqlite:///" + str(tmp_path / "csrf.db")
+        UPLOAD_FOLDER = str(tmp_path / "uploads")
+        LOG_FOLDER = str(tmp_path / "logs")
+
+    client = create_app(ConfigCSRF).test_client()
+    for page in ["/login", "/register"]:
+        assert 'name="csrf_token"' in client.get(page).get_data(as_text=True)
 
 
 # ---------- Téléversement sécurisé ----------
@@ -125,7 +164,7 @@ def test_chaque_tentative_est_journalisee(connecte, app):
 
 def test_historique_ne_montre_que_mes_cv(connecte, app):
     envoyer(connecte, "cv_michael.pdf", b"%PDF-1.4")
-    connecte.get("/logout")
+    connecte.post("/logout")
 
     # Un autre utilisateur ne doit pas voir le CV de michael
     connecte.post("/register", data={

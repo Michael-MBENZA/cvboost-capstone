@@ -10,6 +10,7 @@
 
         <!-- enctype obligatoire pour envoyer un fichier -->
         <form method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label class="dropzone" for="cv">
                 <span class="icon">📄</span>
                 <strong>Choisissez votre fichier</strong>

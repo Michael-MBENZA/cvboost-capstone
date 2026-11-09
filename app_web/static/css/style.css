@@ -67,6 +67,13 @@ h1, h2, h3 { color: var(--marine); line-height: 1.25; margin: 0 0 .5rem; }
     width: 32px; height: 32px; border-radius: 50%;
     background: var(--bleu-clair); color: var(--bleu); font-weight: 700;
 }
+/* Bouton "Déconnexion" (formulaire POST) affiché comme un lien du menu */
+.logout-form { margin: 0; }
+.link-button {
+    background: none; border: none; padding: 0; cursor: pointer;
+    font: inherit; font-weight: 500; color: var(--texte);
+}
+.link-button:hover { color: var(--bleu); }
 .user { display: flex; align-items: center; gap: .5rem; color: var(--gris); }
 
 /* ---------- Boutons ---------- */

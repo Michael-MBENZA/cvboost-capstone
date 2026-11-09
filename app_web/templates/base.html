@@ -25,7 +25,10 @@
                         <span class="avatar">{{ current_user.username[0] | upper }}</span>
                         Bonjour, {{ current_user.username }}
                     </span>
-                    <a href="{{ url_for('main.logout') }}">Déconnexion</a>
+                    <form class="logout-form" method="POST" action="{{ url_for('main.logout') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="link-button">Déconnexion</button>
+                    </form>
                 {% else %}
                     <a href="{{ url_for('main.login') }}">Connexion</a>
                     <a class="btn" href="{{ url_for('main.register') }}">Inscription</a>

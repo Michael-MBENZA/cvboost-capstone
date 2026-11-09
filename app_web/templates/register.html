@@ -9,6 +9,7 @@
         <p class="subtitle">Rejoignez CVBoost et mettez toutes les chances de votre côté.</p>
 
         <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label for="username">Nom d'utilisateur</label>
             <input type="text" id="username" name="username" required value="{{ request.form.username }}">
 
