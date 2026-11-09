@@ -28,6 +28,10 @@ logs/
 data/processed/upload_events.csv
 data/reports/
 
+# Dataset NLP (Sprint 3) : régénéré par python -m ai_engine.prepare_dataset
+# (seul stats.json est versionné : les données font plusieurs Mo)
+ai_engine/data/*.jsonl
+
 # Éditeurs
 .vscode/
 .claude/
