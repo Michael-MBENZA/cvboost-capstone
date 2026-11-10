@@ -1,28 +1,26 @@
 {% extends "base.html" %}
 
 {% block title %}Connexion{% endblock %}
+{% block largeur %}page-etroite{% endblock %}
 
 {% block content %}
-<div class="auth-wrapper">
-    <section class="card auth-card">
-        <h1>Connexion</h1>
-        <p class="subtitle">Heureux de vous revoir ! Connectez-vous à votre espace candidat.</p>
+<section class="bloc">
+    <h1>Connexion</h1>
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-        <form method="POST">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label for="email">Adresse e-mail</label>
-            <input type="email" id="email" name="email" required value="{{ request.form.email }}" placeholder="nom@exemple.cd">
+        <label for="email">Adresse e-mail</label>
+        <input type="email" id="email" name="email" required autocomplete="email" value="{{ request.form.email }}">
 
-            <label for="password">Mot de passe</label>
-            <input type="password" id="password" name="password" required>
+        <label for="password">Mot de passe</label>
+        <input type="password" id="password" name="password" required autocomplete="current-password">
 
-            <label class="checkbox">
-                <input type="checkbox" name="remember"> Se souvenir de moi
-            </label>
+        <label class="case">
+            <input type="checkbox" name="remember"> Rester connecté
+        </label>
 
-            <button type="submit" class="btn btn-block">Se connecter</button>
-        </form>
-        <p class="switch">Nouveau sur CVBoost ? <a href="{{ url_for('main.register') }}">Créer un compte</a></p>
-    </section>
-</div>
+        <button type="submit" class="btn btn-large">Se connecter</button>
+    </form>
+    <p class="sous-formulaire">Pas encore de compte ? <a href="{{ url_for('main.register') }}">Créer un compte</a></p>
+</section>
 {% endblock %}

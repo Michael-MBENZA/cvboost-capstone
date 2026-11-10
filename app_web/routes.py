@@ -40,9 +40,23 @@ def journaliser(statut, motif, nom_fichier, taille):
     )
 
 
+@bp.app_template_filter("date_fr")
+def date_fr(valeur):
+    """'2026-11-20' -> '20/11/2026' (format de date habituel en français)."""
+    texte = str(valeur or "")
+    if len(texte) >= 10 and texte[4] == "-" and texte[7] == "-":
+        return f"{texte[8:10]}/{texte[5:7]}/{texte[0:4]}"
+    return texte
+
+
 @bp.route("/")
 def index():
-    return render_template("index.html")
+    # Les 5 offres les plus récentes (le CSV est déjà trié par date de publication)
+    try:
+        offres = ia.charger_offres()
+    except FileNotFoundError:
+        offres = []
+    return render_template("index.html", dernieres_offres=offres[:5], nb_offres=len(offres))
 
 
 @bp.route("/register", methods=["GET", "POST"])

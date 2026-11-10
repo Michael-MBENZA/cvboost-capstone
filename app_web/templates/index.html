@@ -3,40 +3,50 @@
 {% block title %}Accueil{% endblock %}
 
 {% block content %}
-<section class="hero">
-    {% if current_user.is_authenticated %}
-        <h1>Bon retour, {{ current_user.username }} 👋</h1>
-        <p>Déposez un nouveau CV ou retrouvez ceux que vous avez déjà envoyés.</p>
-        <div class="hero-actions">
-            <a class="btn btn-light" href="{{ url_for('main.upload') }}">Déposer mon CV</a>
-            <a class="btn btn-outline" href="{{ url_for('main.history') }}">Voir mon historique</a>
-        </div>
-    {% else %}
-        <h1>Décrochez le poste qui vous correspond</h1>
-        <p>Déposez votre CV sur CVBoost et laissez l'intelligence artificielle vous aider à vous démarquer auprès des recruteurs.</p>
-        <div class="hero-actions">
-            <a class="btn btn-light" href="{{ url_for('main.register') }}">Créer mon compte gratuit</a>
-            <a class="btn btn-outline" href="{{ url_for('main.login') }}">J'ai déjà un compte</a>
-        </div>
-    {% endif %}
-</section>
+<div class="accueil">
+    <section>
+        {% if current_user.is_authenticated %}
+            <h1>Bonjour {{ current_user.username }}.</h1>
+            <p class="chapeau">Retrouvez vos CV, comparez-les aux offres du moment et préparez vos entretiens.</p>
+            <div class="actions">
+                <a class="btn" href="{{ url_for('main.history') }}">Mes CV</a>
+                <a class="btn btn-secondaire" href="{{ url_for('main.upload') }}">Déposer un nouveau CV</a>
+            </div>
+        {% else %}
+            <h1>Votre CV face aux offres d'emploi publiées en RDC.</h1>
+            <p class="chapeau">Déposez votre CV : CVBoost le compare aux offres récentes, indique celles qui vous
+               correspondent le mieux et ce qu'il faut revoir avant de postuler.</p>
+            <div class="actions">
+                <a class="btn" href="{{ url_for('main.register') }}">Créer un compte</a>
+                <a class="btn btn-secondaire" href="{{ url_for('main.login') }}">Se connecter</a>
+            </div>
+        {% endif %}
 
-<h2 class="section-title">Comment ça marche ?</h2>
-<section class="features">
-    <article class="card feature">
-        <span class="icon">📝</span>
-        <h3>1. Créez votre compte</h3>
-        <p>Inscription en quelques secondes. Votre mot de passe est chiffré et vos données restent privées.</p>
-    </article>
-    <article class="card feature">
-        <span class="icon">📄</span>
-        <h3>2. Déposez votre CV</h3>
-        <p>Formats PDF ou DOCX jusqu'à 5 Mo. Chaque fichier est vérifié et stocké de façon sécurisée.</p>
-    </article>
-    <article class="card feature">
-        <span class="icon">📊</span>
-        <h3>3. Suivez vos candidatures</h3>
-        <p>Retrouvez tous vos CV dans votre espace personnel, classés du plus récent au plus ancien.</p>
-    </article>
-</section>
+        <ul class="points">
+            <li><strong>Compatibilité offre par offre</strong>
+                <span>Un pourcentage pour chaque annonce, avec la raison en une phrase.</span></li>
+            <li><strong>Conseils pour adapter votre CV</strong>
+                <span>Ce qu'il faut mettre en avant pour un poste donné, à partir de ce que vous avez réellement fait.</span></li>
+            <li><strong>Préparation à l'entretien</strong>
+                <span>Les questions qu'un recruteur pourrait vous poser pour ce poste.</span></li>
+        </ul>
+    </section>
+
+    <aside class="bloc dernieres">
+        <h2>Dernières offres</h2>
+        {% if dernieres_offres %}
+            <ul class="annonces">
+                {% for o in dernieres_offres %}
+                <li>
+                    <a href="{{ o.url }}" target="_blank" rel="noopener">{{ o.intitule }}</a>
+                    <span class="infos">{{ o.entreprise }} · {{ o.lieu }}{% if o.date_limite %} · jusqu'au {{ o.date_limite | date_fr }}{% endif %}</span>
+                </li>
+                {% endfor %}
+            </ul>
+            <p class="discret">{{ nb_offres }} offres en base, mises à jour depuis mediacongo.net.</p>
+        {% else %}
+            <p class="discret">Aucune offre chargée pour le moment.</p>
+        {% endif %}
+    </aside>
+</div>
 {% endblock %}

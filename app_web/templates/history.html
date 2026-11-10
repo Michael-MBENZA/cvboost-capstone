@@ -1,24 +1,24 @@
 {% extends "base.html" %}
 
-{% block title %}Mon historique{% endblock %}
+{% block title %}Mes CV{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="titre-page">
     <div>
-        <h1>Mon historique</h1>
-        <p>{{ documents | length }} CV déposé(s)</p>
+        <h1>Mes CV</h1>
+        <p>{{ documents | length }} fichier{{ 's' if documents | length > 1 }}</p>
     </div>
-    <a class="btn" href="{{ url_for('main.upload') }}">+ Déposer un CV</a>
+    <a class="btn" href="{{ url_for('main.upload') }}">Déposer un CV</a>
 </div>
 
-<section class="card">
+<section class="bloc">
     {% if documents %}
-        <div class="table-wrapper">
+        <div class="tableau">
             <table>
                 <thead>
                     <tr>
                         <th>Fichier</th>
-                        <th>Type</th>
+                        <th>Format</th>
                         <th>Taille</th>
                         <th>Déposé le</th>
                         <th></th>
@@ -27,21 +27,20 @@
                 <tbody>
                     {% for doc in documents %}
                     <tr>
-                        <td class="file-name">{{ doc.original_name }}</td>
-                        <td><span class="badge badge-{{ doc.file_type }}">{{ doc.file_type | upper }}</span></td>
-                        <td>{{ (doc.size_bytes / 1024) | round(1) }} Ko</td>
-                        <td>{{ doc.uploaded_at.strftime('%d/%m/%Y à %H:%M') }}</td>
-                        <td><a class="btn btn-small" href="{{ url_for('main.offres_compatibles', doc_id=doc.id) }}">Offres compatibles</a></td>
+                        <td class="nom">{{ doc.original_name }}</td>
+                        <td><span class="etiquette">{{ doc.file_type | upper }}</span></td>
+                        <td>{{ (doc.size_bytes / 1024) | round(0) | int }} Ko</td>
+                        <td>{{ doc.uploaded_at.strftime('%d/%m/%Y, %H:%M') }}</td>
+                        <td class="action"><a class="btn btn-secondaire btn-petit" href="{{ url_for('main.offres_compatibles', doc_id=doc.id) }}">Comparer aux offres</a></td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
     {% else %}
-        <div class="empty-state">
-            <span class="icon">📂</span>
+        <div class="vide">
             <p>Vous n'avez encore déposé aucun CV.</p>
-            <a class="btn" href="{{ url_for('main.upload') }}">Déposer mon premier CV</a>
+            <a class="btn" href="{{ url_for('main.upload') }}">Déposer un CV</a>
         </div>
     {% endif %}
 </section>

@@ -1,31 +1,22 @@
 {% extends "base.html" %}
 
 {% block title %}Déposer un CV{% endblock %}
+{% block largeur %}page-etroite{% endblock %}
 
 {% block content %}
-<div class="auth-wrapper">
-    <section class="card auth-card">
-        <h1>Déposer mon CV</h1>
-        <p class="subtitle">Ajoutez votre CV à votre espace candidat.</p>
+<section class="bloc">
+    <h1>Déposer un CV</h1>
+    <p class="discret">Formats acceptés : PDF ou Word (.docx), 5 Mo maximum. Le fichier est renommé
+       à l'enregistrement et n'est visible que par vous.</p>
 
-        <!-- enctype obligatoire pour envoyer un fichier -->
-        <form method="POST" enctype="multipart/form-data">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label class="dropzone" for="cv">
-                <span class="icon">📄</span>
-                <strong>Choisissez votre fichier</strong>
-                <small>PDF ou DOCX, 5 Mo maximum</small>
-                <input type="file" id="cv" name="cv" accept=".pdf,.docx" required>
-            </label>
-
-            <button type="submit" class="btn btn-block">Téléverser mon CV</button>
-        </form>
-
-        <ul class="rules">
-            <li>Formats acceptés : PDF et DOCX</li>
-            <li>Taille maximale : 5 Mo</li>
-            <li>Fichier renommé et stocké de façon sécurisée</li>
-        </ul>
-    </section>
-</div>
+    <form method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="champ-fichier">
+            <label for="cv">Fichier du CV</label>
+            <input type="file" id="cv" name="cv" accept=".pdf,.docx" required>
+            <p>Un CV scanné (image) ne pourra pas être analysé : préférez le fichier d'origine.</p>
+        </div>
+        <button type="submit" class="btn btn-large">Envoyer</button>
+    </form>
+</section>
 {% endblock %}

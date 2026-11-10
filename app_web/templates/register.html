@@ -1,30 +1,28 @@
 {% extends "base.html" %}
 
-{% block title %}Inscription{% endblock %}
+{% block title %}Créer un compte{% endblock %}
+{% block largeur %}page-etroite{% endblock %}
 
 {% block content %}
-<div class="auth-wrapper">
-    <section class="card auth-card">
-        <h1>Créer mon compte</h1>
-        <p class="subtitle">Rejoignez CVBoost et mettez toutes les chances de votre côté.</p>
+<section class="bloc">
+    <h1>Créer un compte</h1>
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-        <form method="POST">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label for="username">Nom d'utilisateur</label>
-            <input type="text" id="username" name="username" required value="{{ request.form.username }}">
+        <label for="username">Nom d'utilisateur</label>
+        <input type="text" id="username" name="username" required autocomplete="username" value="{{ request.form.username }}">
 
-            <label for="email">Adresse e-mail</label>
-            <input type="email" id="email" name="email" required value="{{ request.form.email }}" placeholder="nom@exemple.cd">
+        <label for="email">Adresse e-mail</label>
+        <input type="email" id="email" name="email" required autocomplete="email" value="{{ request.form.email }}">
 
-            <label for="password">Mot de passe <small>(8 caractères minimum)</small></label>
-            <input type="password" id="password" name="password" required minlength="8">
+        <label for="password">Mot de passe <small>8 caractères minimum</small></label>
+        <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password">
 
-            <label for="confirm">Confirmer le mot de passe</label>
-            <input type="password" id="confirm" name="confirm" required minlength="8">
+        <label for="confirm">Confirmation du mot de passe</label>
+        <input type="password" id="confirm" name="confirm" required minlength="8" autocomplete="new-password">
 
-            <button type="submit" class="btn btn-block">S'inscrire</button>
-        </form>
-        <p class="switch">Déjà inscrit ? <a href="{{ url_for('main.login') }}">Se connecter</a></p>
-    </section>
-</div>
+        <button type="submit" class="btn btn-large">Créer mon compte</button>
+    </form>
+    <p class="sous-formulaire">Déjà inscrit ? <a href="{{ url_for('main.login') }}">Se connecter</a></p>
+</section>
 {% endblock %}

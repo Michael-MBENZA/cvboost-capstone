@@ -5,7 +5,7 @@ document.querySelectorAll("form.js-chargement").forEach(function (formulaire) {
         var bouton = formulaire.querySelector("button[type=submit]");
         if (bouton) {
             bouton.disabled = true;
-            bouton.textContent = "Analyse en cours… (environ 20 secondes)";
+            bouton.textContent = "Analyse en cours, merci de patienter…";
         }
     });
 });

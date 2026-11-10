@@ -1,81 +1,85 @@
 {% extends "base.html" %}
 
-{% block title %}Analyse détaillée{% endblock %}
+{% block title %}{{ offre.intitule }}{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="titre-page">
     <div>
         <h1>{{ offre.intitule }}</h1>
-        <p>{{ offre.entreprise }} · {{ offre.lieu }}{% if offre.date_limite %} · avant le {{ offre.date_limite }}{% endif %}
+        <p>{{ offre.entreprise }} · {{ offre.lieu }}{% if offre.date_limite %} · jusqu'au {{ offre.date_limite | date_fr }}{% endif %}
            · <a href="{{ offre.url }}" target="_blank" rel="noopener">voir l'annonce</a></p>
     </div>
-    <a class="btn btn-outline" href="{{ url_for('main.offres_compatibles', doc_id=document.id) }}">← Toutes les offres</a>
+    <a class="btn btn-secondaire" href="{{ url_for('main.offres_compatibles', doc_id=document.id) }}">Retour aux offres</a>
 </div>
 
 {% if not analyse %}
-    <section class="card cta-card">
-        <span class="icon">🧑‍💼</span>
-        <h2>Analyse détaillée de mon CV pour ce poste</h2>
-        <p>Résumé de votre profil, score de compatibilité, points forts, compétences manquantes,
-           suggestions pour améliorer votre CV et première question d'entretien.
-           {% if mode == "demo" %}<br><strong>Mode démo</strong> : aucune clé OpenAI n'est configurée.{% endif %}</p>
+    <section class="bloc lancement">
+        <h2>Analyse détaillée de votre candidature</h2>
+        <p>Résumé de votre profil, compatibilité avec ce poste, points forts, manques, conseils pour
+           adapter votre CV et première question d'entretien.</p>
+        {% if mode == "demo" %}<p><strong>Mode démo</strong> : aucune clé OpenAI n'est configurée.</p>{% endif %}
         <form method="POST" class="js-chargement">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn">Lancer l'analyse détaillée</button>
         </form>
     </section>
 {% else %}
-    <p class="meta">
-        CV : {{ document.original_name }} ·
-        {% if analyse.mode == "openai" %}Analyse IA ({{ analyse.modele }}){% else %}Mode démo (mots-clés){% endif %}
-        · {{ analyse.cree_le.strftime('%d/%m/%Y à %H:%M') }}
+    <p class="discret">
+        {{ document.original_name }} ·
+        {% if analyse.mode == "openai" %}analyse réalisée avec {{ analyse.modele }}{% else %}mode démo (mots-clés){% endif %},
+        le {{ analyse.cree_le.strftime('%d/%m/%Y à %H:%M') }}.
+        Ce pourcentage peut différer de celui de la liste : il tient compte de l'annonce complète.
     </p>
 
     {% if not offre.description_disponible %}
-        <div class="alert alert-info">Cette annonce est publiée en image : l'analyse se base sur le titre, l'entreprise et le lieu.</div>
+        <div class="message message-info">L'annonce est publiée sous forme d'image : l'analyse repose sur
+            l'intitulé, l'employeur et le lieu.</div>
     {% endif %}
 
-    <section class="card analyse-entete">
-        <div class="score score-grand score-{{ 'haut' if resultat.score >= 70 else ('moyen' if resultat.score >= 40 else 'bas') }}">
-            {{ resultat.score }}<small>%</small>
+    {% set niveau = 'haut' if resultat.score >= 70 else ('moyen' if resultat.score >= 40 else 'bas') %}
+    <section class="bloc synthese">
+        <div class="jauge {{ niveau }}">
+            <strong>{{ resultat.score }} %</strong>
+            compatibilité
+            <div class="barre"><span style="width: {{ resultat.score }}%"></span></div>
         </div>
         <div>
-            <h2>Résumé de votre profil</h2>
+            <h2>Votre profil</h2>
             <p>{{ resultat.resume_profil }}</p>
         </div>
     </section>
 
-    <div class="grille-2">
-        <section class="card">
-            <h2>✅ Points forts</h2>
+    <div class="deux-colonnes">
+        <section class="bloc">
+            <h2>Points forts</h2>
             {% if resultat.points_forts %}
                 <ul class="liste">{% for p in resultat.points_forts %}<li>{{ p }}</li>{% endfor %}</ul>
-            {% else %}<p class="meta">Aucun point fort identifié.</p>{% endif %}
+            {% else %}<p class="discret">Aucun point fort relevé pour ce poste.</p>{% endif %}
         </section>
-        <section class="card">
-            <h2>⚠️ Compétences manquantes</h2>
+        <section class="bloc">
+            <h2>Ce qui manque</h2>
             {% if resultat.competences_manquantes %}
                 <ul class="liste">{% for c in resultat.competences_manquantes %}<li>{{ c }}</li>{% endfor %}</ul>
-            {% else %}<p class="meta">Aucune compétence manquante identifiée.</p>{% endif %}
+            {% else %}<p class="discret">Rien de particulier.</p>{% endif %}
         </section>
     </div>
 
-    <section class="card">
-        <h2>✏️ Comment améliorer mon CV pour cette offre</h2>
-        <p class="meta">Conseils basés uniquement sur ce que contient votre CV : n'ajoutez que ce qui est vrai.</p>
+    <section class="bloc" style="margin-top: 1.25rem;">
+        <h2>Adapter votre CV à ce poste</h2>
+        <p class="discret">N'ajoutez que ce qui est exact : ces conseils portent sur la présentation de votre parcours.</p>
         {% if resultat.suggestions_cv %}
-            <ol class="suggestions">
+            <ol class="conseils">
                 {% for s in resultat.suggestions_cv %}
                 <li><strong>{{ s.section }}</strong> : {{ s.conseil }}</li>
                 {% endfor %}
             </ol>
-        {% else %}<p class="meta">Aucune suggestion.</p>{% endif %}
+        {% else %}<p class="discret">Pas de conseil particulier.</p>{% endif %}
     </section>
 
     {% if resultat.question_entretien %}
-    <section class="card question-card">
-        <h2>🎤 Première question d'entretien</h2>
-        <blockquote>{{ resultat.question_entretien }}</blockquote>
+    <section class="bloc">
+        <h2>Première question d'entretien</h2>
+        <p class="question">{{ resultat.question_entretien }}</p>
     </section>
     {% endif %}
 {% endif %}
