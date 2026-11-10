@@ -1,6 +1,6 @@
 """Nettoyage et normalisation des offres d'emploi avec Pandas (Sprint 2).
 
-Entrée  : data/raw/jobs_mediacongo.csv        (données brutes du scraper)
+Entrée  : data/raw/offres.csv                (données brutes du scraper, toutes sources)
 Sortie  : data/processed/jobs_clean.csv       (données "IA-Ready")
 
 Étapes :
@@ -23,7 +23,8 @@ import unicodedata
 import pandas as pd
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-CSV_BRUT = os.path.join(BASE_DIR, "data", "raw", "jobs_mediacongo.csv")
+CSV_BRUT = os.path.join(BASE_DIR, "data", "raw", "offres.csv")
+ANCIEN_CSV_BRUT = os.path.join(BASE_DIR, "data", "raw", "jobs_mediacongo.csv")  # avant le multi-sources
 CSV_PROPRE = os.path.join(BASE_DIR, "data", "processed", "jobs_clean.csv")
 
 # Hypothèses de conversion (à mettre à jour si besoin)
@@ -171,22 +172,41 @@ def ville_de(lieu):
     return premier or "Non précisé"
 
 
+def lire_date(serie):
+    """Accepte les formats rencontrés : 2026-11-05 (ISO), 05.11.2026 (mediacongo), 05/11/2026."""
+    iso = pd.to_datetime(serie, format="%Y-%m-%d", errors="coerce")
+    points = pd.to_datetime(serie, format="%d.%m.%Y", errors="coerce")
+    barres = pd.to_datetime(serie, format="%d/%m/%Y", errors="coerce")
+    return iso.fillna(points).fillna(barres)
+
+
+def filtrer_expirees(df, aujourdhui=None):
+    """Retire les offres dont la date limite est passée (les offres sans date limite sont gardées)."""
+    aujourdhui = pd.Timestamp(aujourdhui or pd.Timestamp.today().normalize())
+    expirees = df["date_limite"].notna() & (df["date_limite"] < aujourdhui)
+    return df[~expirees], int(expirees.sum())
+
+
 # ---------- Pipeline complet ----------
 
 def nettoyer(df):
     """DataFrame brut -> DataFrame propre. Renvoie aussi un petit rapport (dict)."""
     rapport = {"lignes_brutes": len(df)}
     df = df.copy()
+    if "source" not in df.columns:  # fichiers d'avant le multi-sources
+        df["source"] = "mediacongo"
+    df["source"] = df["source"].replace("", "mediacongo")
 
     # 1. Texte
     for col in ["reference", "intitule", "entreprise", "lieu", "description", "salaire", "url"]:
         if col in df.columns:
             df[col] = nettoyer_texte(df[col])
 
-    # 2. Doublons : même référence, ou même poste publié deux fois (titre + entreprise + lieu)
+    # 2. Doublons : même référence, ou même poste publié deux fois, éventuellement sur deux sites
+    #    différents (même intitulé + même employeur, sans tenir compte des accents ni de la casse)
     avant = len(df)
     df = df.drop_duplicates(subset="reference")
-    cle = df["intitule"].map(sans_accents) + "|" + df["entreprise"].map(sans_accents) + "|" + df["lieu"].map(sans_accents)
+    cle = df["intitule"].map(sans_accents) + "|" + df["entreprise"].map(sans_accents)
     df = df[~cle.duplicated()]
     rapport["doublons_supprimes"] = avant - len(df)
 
@@ -208,8 +228,8 @@ def nettoyer(df):
     # 4. Lieu et dates
     df["ville"] = df["lieu"].map(ville_de)
     df["province"] = df["lieu"].map(province_de)
-    df["date_publication"] = pd.to_datetime(df["date_publication"], format="%d.%m.%Y", errors="coerce")
-    df["date_limite"] = pd.to_datetime(df["date_limite"], format="%Y-%m-%d", errors="coerce")
+    df["date_publication"] = lire_date(df["date_publication"])
+    df["date_limite"] = lire_date(df["date_limite"])
     df["duree_candidature_jours"] = (df["date_limite"] - df["date_publication"]).dt.days
 
     # 5. Salaires
@@ -235,11 +255,13 @@ def nettoyer(df):
 
 
 if __name__ == "__main__":
-    if not os.path.exists(CSV_BRUT):
+    source_brute = CSV_BRUT if os.path.exists(CSV_BRUT) else ANCIEN_CSV_BRUT
+    if not os.path.exists(source_brute):
         sys.exit(f"Fichier introuvable : {CSV_BRUT}\nLancez d'abord : python -m data_pipeline.scraper_jobs")
 
-    brut = pd.read_csv(CSV_BRUT, dtype=str, keep_default_na=False)
+    brut = pd.read_csv(source_brute, dtype=str, keep_default_na=False)
     propre, rapport = nettoyer(brut)
+    propre, nb_expirees = filtrer_expirees(propre)  # le site n'affiche que des offres encore ouvertes
 
     os.makedirs(os.path.dirname(CSV_PROPRE), exist_ok=True)
     propre.to_csv(CSV_PROPRE, index=False, encoding="utf-8", date_format="%Y-%m-%d")
@@ -247,7 +269,8 @@ if __name__ == "__main__":
     print(f"Lignes brutes            : {rapport['lignes_brutes']}")
     print(f"Doublons supprimés       : {rapport['doublons_supprimes']}")
     print(f"Valeurs manquantes avant : {rapport['valeurs_manquantes_avant']}")
-    print(f"Lignes finales           : {rapport['lignes_finales']}")
+    print(f"Offres expirées retirées : {nb_expirees}")
+    print(f"Lignes finales           : {len(propre)}  {propre['source'].value_counts().to_dict()}")
     print(f"Avec vraie description   : {rapport['offres_avec_description']}")
     print(f"Avec salaire (USD/mois)  : {rapport['offres_avec_salaire']}")
     print(f"Top 5 compétences        : {rapport['top_competences']}")

@@ -173,3 +173,82 @@ def test_nettoyage_complet():
     assert bool(compta["description_disponible"]) is False
     assert bool(compta["salaire_indique"]) is False
     assert compta["comp_comptabilite"] == 1                   # trouvée dans le titre
+
+
+# ---------- Scraping multi-sources ----------
+
+def test_radiookapi_garde_seulement_les_offres_d_emploi():
+    from data_pipeline.sources.radiookapi import parser_liste
+    offres = parser_liste(lire_fixture("radiookapi_liste.html"))
+    # l'appel d'offres (« Acquisition de biens ») est écarté
+    assert [o["entreprise"] for o in offres] == ["GiveDirectly (GD)", "DRC Gold Trading SA"]
+    premiere = offres[0]
+    assert premiere["intitule"] == "Agent Centre d'Appel de Goma"
+    assert premiere["reference"] == "RO-givedirectly-gd-agent-centre-dappel-de-goma"
+    assert premiere["date_publication"] == "06/11/2026"
+    assert premiere["url"].startswith("https://www.radiookapi.net/offre-demploi/")
+
+
+def test_radiookapi_detail_lieu_et_date_limite():
+    from data_pipeline.sources.radiookapi import parser_detail
+    detail = parser_detail(lire_fixture("radiookapi_detail.html"))
+    assert detail["lieu"] == "GOMA"
+    assert detail["date_limite"] == "2026-11-20"   # « au plus tard le 20 novembre 2026 »
+    assert "Excel" in detail["description"]
+
+
+def test_extraire_date_limite_formats():
+    from data_pipeline.sources.commun import extraire_date_limite
+    assert extraire_date_limite("Date limite : 30/11/2026") == "2026-11-30"
+    assert extraire_date_limite("Deadline: 05.12.2026") == "2026-12-05"
+    assert extraire_date_limite("au plus tard le 1er décembre 2026") == "2026-12-01"
+    assert extraire_date_limite("Envoyez votre CV rapidement") == ""
+
+
+def test_reliefweb_conversion_et_appname_absent():
+    from data_pipeline.sources import reliefweb
+    item = {"id": 4242, "fields": {
+        "title": "Logistics Officer", "body": "<p>Manage the <b>warehouse</b> in Goma.</p>",
+        "source": [{"name": "UNICEF"}], "city": [{"name": "Goma"}],
+        "date": {"created": "2026-11-02T10:00:00+00:00", "closing": "2026-11-25T00:00:00+00:00"},
+        "url_alias": "https://reliefweb.int/job/4242/logistics-officer"}}
+    offre = reliefweb.convertir(item)
+    assert offre["reference"] == "RW-4242" and offre["entreprise"] == "UNICEF"
+    assert offre["lieu"] == "Goma" and offre["date_limite"] == "2026-11-25"
+    assert offre["description"] == "Manage the warehouse in Goma."
+    # Sans appname : la source est ignorée proprement, sans appel réseau
+    assert reliefweb.collecter(None, set(), appname="", afficher=lambda m: None) == []
+
+
+def test_fusion_incrementale_sans_doublon():
+    from data_pipeline.scraper_jobs import fusionner, normaliser_date
+    assert normaliser_date("05.11.2026") == "2026-11-05"
+    assert normaliser_date("06/11/2026 - 10:12") == "2026-11-06"
+    existantes = [{"reference": "OEM1", "intitule": "Ancienne", "date_publication": "2026-11-01"}]
+    nouvelles = [{"reference": "OEM1", "intitule": "Doublon", "date_publication": "01.11.2026"},
+                 {"reference": "RO-x", "intitule": "Nouvelle", "date_publication": "06/11/2026"}]
+    fusion = fusionner(existantes, nouvelles)
+    assert [o["reference"] for o in fusion] == ["RO-x", "OEM1"]   # triées du plus récent au plus ancien
+    assert fusion[1]["intitule"] == "Ancienne"                     # l'offre connue n'est pas écrasée
+
+
+def test_nettoyage_multi_sources_et_offres_expirees():
+    import pandas as pd
+    from data_pipeline.pandas_cleaning import filtrer_expirees, nettoyer
+    texte = "Gérer la logistique et les stocks du bureau, suivi des fournisseurs. " * 3
+    brut = pd.DataFrame([
+        {"source": "mediacongo", "reference": "OEM9", "intitule": "Logisticien", "entreprise": "ONG A",
+         "lieu": "Goma", "date_publication": "01.11.2026", "date_limite": "2026-11-20",
+         "salaire": "", "description": texte, "url": "u1"},
+        {"source": "radiookapi", "reference": "RO-y", "intitule": "LOGISTICIEN", "entreprise": "ong a",
+         "lieu": "Goma (Nord-Kivu)", "date_publication": "2026-11-02", "date_limite": "2026-11-20",
+         "salaire": "", "description": texte, "url": "u2"},   # même poste sur un 2e site
+        {"source": "radiookapi", "reference": "RO-z", "intitule": "Comptable", "entreprise": "ONG B",
+         "lieu": "Kinshasa", "date_publication": "2026-10-01", "date_limite": "2026-10-15",
+         "salaire": "", "description": texte, "url": "u3"},   # expirée
+    ])
+    propre, rapport = nettoyer(brut)
+    assert rapport["doublons_supprimes"] == 1                  # doublon entre deux sites
+    assert set(propre["source"]) == {"mediacongo", "radiookapi"}
+    ouvertes, nb_expirees = filtrer_expirees(propre, aujourdhui="2026-11-10")
+    assert nb_expirees == 1 and list(ouvertes["reference"]) == ["OEM9"]
