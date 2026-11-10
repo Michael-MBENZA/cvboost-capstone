@@ -6,7 +6,7 @@
 <div class="titre-page">
     <div>
         <h1>Offres compatibles</h1>
-        <p>{{ document.original_name }} · comparé à {{ nb_offres }} offres de mediacongo.net</p>
+        <p>{{ document.original_name }} · comparé à {{ nb_offres }} offres d'emploi en RDC</p>
     </div>
     <a class="btn btn-secondaire" href="{{ url_for('main.history') }}">Retour à mes CV</a>
 </div>
@@ -38,7 +38,7 @@
             <li class="resultat">
                 <div>
                     <h3>{{ o.intitule }}</h3>
-                    <p class="infos">{{ o.entreprise }} · {{ o.lieu }}{% if o.date_limite %} · jusqu'au {{ o.date_limite | date_fr }}{% endif %}</p>
+                    <p class="infos">{{ o.entreprise }} · {{ o.lieu }}{% if o.date_limite %} · jusqu'au {{ o.date_limite | date_fr }}{% endif %} · {{ o.source | nom_source }}</p>
                     <p class="raison">{{ o.raison }}</p>
                     {% if not o.description_disponible %}
                         <span class="etiquette">Annonce en image : analyse limitée au titre</span>

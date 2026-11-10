@@ -7,7 +7,7 @@
     <div>
         <h1>{{ offre.intitule }}</h1>
         <p>{{ offre.entreprise }} · {{ offre.lieu }}{% if offre.date_limite %} · jusqu'au {{ offre.date_limite | date_fr }}{% endif %}
-           · <a href="{{ offre.url }}" target="_blank" rel="noopener">voir l'annonce</a></p>
+           · <a href="{{ offre.url }}" target="_blank" rel="noopener">voir l'annonce sur {{ offre.source | nom_source }}</a></p>
     </div>
     <a class="btn btn-secondaire" href="{{ url_for('main.offres_compatibles', doc_id=document.id) }}">Retour aux offres</a>
 </div>

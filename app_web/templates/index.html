@@ -39,11 +39,11 @@
                 {% for o in dernieres_offres %}
                 <li>
                     <a href="{{ o.url }}" target="_blank" rel="noopener">{{ o.intitule }}</a>
-                    <span class="infos">{{ o.entreprise }} · {{ o.lieu }}{% if o.date_limite %} · jusqu'au {{ o.date_limite | date_fr }}{% endif %}</span>
+                    <span class="infos">{{ o.entreprise }} · {{ o.lieu }}{% if o.date_limite %} · jusqu'au {{ o.date_limite | date_fr }}{% endif %} · {{ o.source | nom_source }}</span>
                 </li>
                 {% endfor %}
             </ul>
-            <p class="discret">{{ nb_offres }} offres en base, mises à jour depuis mediacongo.net.</p>
+            <p class="discret">{{ nb_offres }} offres en cours, issues de mediacongo.net, Radio Okapi et ReliefWeb.</p>
         {% else %}
             <p class="discret">Aucune offre chargée pour le moment.</p>
         {% endif %}

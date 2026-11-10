@@ -49,6 +49,14 @@ def date_fr(valeur):
     return texte
 
 
+NOMS_SOURCES = {"mediacongo": "mediacongo.net", "radiookapi": "Radio Okapi", "reliefweb": "ReliefWeb"}
+
+
+@bp.app_template_filter("nom_source")
+def nom_source(code):
+    return NOMS_SOURCES.get(code, code)
+
+
 @bp.route("/")
 def index():
     # Les 5 offres les plus récentes (le CSV est déjà trié par date de publication)
