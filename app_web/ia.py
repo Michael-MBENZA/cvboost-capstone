@@ -24,7 +24,7 @@ from flask import current_app
 from . import db
 from .models import Analyse
 
-PROMPT_VERSION = "v1"  # à incrémenter dès qu'on modifie un prompt : l'ancien cache est alors ignoré
+PROMPT_VERSION = "v2"  # à incrémenter dès qu'on modifie un prompt : l'ancien cache est alors ignoré
 TAILLE_DESCRIPTION_CLASSEMENT = 700   # caractères par offre envoyés pour le classement
 TAILLE_DESCRIPTION_DETAIL = 6000      # caractères envoyés pour l'analyse détaillée
 
@@ -99,6 +99,9 @@ Règles strictes :
   de diplôme, de compétence ou de chiffre absent du CV.
 - Barème du score de compatibilité (0 à 100) : expérience pertinente 40 points,
   compétences techniques 30, formation 15, langues et savoir-être 15.
+  Additionne réellement ces points pour chaque offre : utilise toute l'échelle et
+  différencie les offres entre elles (deux offres différentes ont rarement le même score).
+  Compte aussi les compétences TRANSFÉRABLES (outils, gestion, langues, rédaction...).
 - Si une offre n'a pas de description (annonce publiée en image), juge sur le titre,
   l'entreprise et le lieu, et reste prudent (score modéré).
 - Réponds en français, uniquement avec un objet JSON valide, sans texte autour."""
@@ -185,11 +188,12 @@ def analyser_offre(texte_cv, offre):
                    else "(annonce publiée en image : pas de description disponible)")
     message = (
         "Analyse la compatibilité de ce CV avec cette offre d'emploi.\n"
-        "Pour les suggestions : propose des modifications CONCRÈTES du CV pour mieux correspondre à "
-        "CETTE offre (reformuler, mettre en avant, utiliser les mots-clés de l'offre, réorganiser), "
-        "uniquement à partir de ce que le candidat a réellement fait. Si une compétence manque, "
-        "conseille de l'acquérir ou de la mentionner seulement si elle est vraie : ne fais jamais "
-        "inventer d'expérience.\n"
+        "Pour les suggestions : propose 3 à 5 modifications CONCRÈTES du CV pour mieux correspondre à "
+        "CETTE offre (reformuler, mettre en avant, chiffrer, utiliser les mots-clés de l'offre, réorganiser). "
+        "Chaque suggestion doit s'appuyer sur un élément PRÉCIS déjà présent dans le CV, que tu cites. "
+        "Ne conseille jamais d'ajouter ou de suggérer une expérience, une compétence ou un diplôme "
+        "absent du CV : pour une compétence manquante, conseille seulement de l'acquérir (formation, "
+        "certification) ou de la mentionner si le candidat la possède vraiment.\n"
         "Format attendu :\n"
         '{"resume_profil": "3 phrases maximum", "score": 0, '
         '"points_forts": ["..."], "competences_manquantes": ["..."], '
