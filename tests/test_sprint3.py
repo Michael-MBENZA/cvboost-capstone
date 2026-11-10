@@ -219,3 +219,22 @@ def test_empreinte_change_si_le_cv_change(app):
         offre = {"reference": "OEM1", "intitule": "Dev", "description": "Python"}
         assert ia.cle_detail("CV version 1", offre) != ia.cle_detail("CV version 2", offre)
         assert ia.cle_detail("CV version 1", offre) == ia.cle_detail("CV version 1", offre)
+
+
+# ---------- Catalogue public des offres ----------
+
+def test_catalogue_public_et_filtres(client, app):
+    ecrire_offres(app)
+    page = client.get("/offres").get_data(as_text=True)          # accessible sans compte
+    assert "Développeur Python" in page and "Comptable" in page
+    page = client.get("/offres?q=flask").get_data(as_text=True)  # recherche dans la description
+    assert "Développeur Python" in page and "Comptable" not in page
+    page = client.get("/offres?province=Nord-Kivu").get_data(as_text=True)
+    assert "Comptable" in page and "Développeur Python" not in page
+
+
+def test_fiche_offre(client, app):
+    ecrire_offres(app)
+    page = client.get("/offres/OEM1").get_data(as_text=True)
+    assert "Description du poste" in page and "Créez un compte" in page
+    assert client.get("/offres/INCONNUE").status_code == 404

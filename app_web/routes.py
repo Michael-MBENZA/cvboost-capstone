@@ -67,6 +67,52 @@ def index():
     return render_template("index.html", dernieres_offres=offres[:5], nb_offres=len(offres))
 
 
+def offres_en_cours():
+    try:
+        return ia.charger_offres()
+    except FileNotFoundError:
+        return []
+
+
+@bp.route("/offres")
+def catalogue():
+    """Toutes les offres ouvertes, consultables sans compte, avec recherche et filtres."""
+    offres = offres_en_cours()
+    recherche = request.args.get("q", "").strip()
+    province = request.args.get("province", "")
+    source = request.args.get("source", "")
+
+    resultats = offres
+    if recherche:
+        mots = ia.mots_cles(recherche) or {recherche.lower()}
+        resultats = [o for o in resultats
+                     if mots <= ia.mots_cles(f"{o['intitule']} {o['entreprise']} {o['description']}")]
+    if province:
+        resultats = [o for o in resultats if o["province"] == province]
+    if source:
+        resultats = [o for o in resultats if o["source"] == source]
+
+    return render_template(
+        "catalogue.html", offres=resultats, total=len(offres),
+        recherche=recherche, province=province, source=source,
+        provinces=sorted({o["province"] for o in offres if o["province"]}),
+        sources=sorted({o["source"] for o in offres}),
+    )
+
+
+@bp.route("/offres/<reference>")
+def offre(reference):
+    offre_trouvee = ia.trouver_offre(reference, offres_en_cours())
+    if offre_trouvee is None:
+        abort(404)
+    # Pour un candidat connecté : lien direct vers l'analyse avec son CV le plus récent
+    dernier_cv = None
+    if current_user.is_authenticated:
+        dernier_cv = (Document.query.filter_by(user_id=current_user.id)
+                      .order_by(Document.uploaded_at.desc()).first())
+    return render_template("offre.html", offre=offre_trouvee, dernier_cv=dernier_cv)
+
+
 @bp.route("/register", methods=["GET", "POST"])
 def register():
     if current_user.is_authenticated:

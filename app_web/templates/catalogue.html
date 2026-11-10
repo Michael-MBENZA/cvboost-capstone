@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Offres d'emploi{% endblock %}
+
+{% block content %}
+<div class="titre-page">
+    <div>
+        <h1>Offres d'emploi</h1>
+        <p>{{ offres | length }} offre{{ 's' if offres | length > 1 }}{% if offres | length != total %} sur {{ total }}{% endif %} encore ouverte{{ 's' if offres | length > 1 }}</p>
+    </div>
+</div>
+
+<form class="bloc filtres" method="GET" action="{{ url_for('main.catalogue') }}">
+    <div class="filtre-texte">
+        <label for="q">Recherche</label>
+        <input type="text" id="q" name="q" value="{{ recherche }}" placeholder="Poste, employeur, mot-clé">
+    </div>
+    <div>
+        <label for="province">Province</label>
+        <select id="province" name="province">
+            <option value="">Toutes</option>
+            {% for p in provinces %}
+                <option value="{{ p }}" {% if p == province %}selected{% endif %}>{{ p }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label for="source">Source</label>
+        <select id="source" name="source">
+            <option value="">Toutes</option>
+            {% for s in sources %}
+                <option value="{{ s }}" {% if s == source %}selected{% endif %}>{{ s | nom_source }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filtre-actions">
+        <button type="submit" class="btn">Filtrer</button>
+        {% if recherche or province or source %}
+            <a href="{{ url_for('main.catalogue') }}">Effacer</a>
+        {% endif %}
+    </div>
+</form>
+
+<section class="bloc">
+    {% if offres %}
+        <ul class="resultats">
+            {% for o in offres %}
+            <li class="resultat resultat-simple">
+                <div>
+                    <h3><a class="titre-offre" href="{{ url_for('main.offre', reference=o.reference) }}">{{ o.intitule }}</a></h3>
+                    <p class="infos">{{ o.entreprise }} · {{ o.lieu }}{% if o.date_limite %} · jusqu'au {{ o.date_limite | date_fr }}{% endif %} · {{ o.source | nom_source }}</p>
+                </div>
+                <a class="btn btn-secondaire btn-petit" href="{{ url_for('main.offre', reference=o.reference) }}">Voir l'offre</a>
+            </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p class="vide">Aucune offre ne correspond à ces critères.</p>
+    {% endif %}
+</section>
+{% endblock %}

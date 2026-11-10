@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}{{ offre.intitule }}{% endblock %}
+
+{% block content %}
+<div class="titre-page">
+    <div>
+        <h1>{{ offre.intitule }}</h1>
+        <p>{{ offre.entreprise }} · {{ offre.lieu }}{% if offre.date_limite %} · candidature jusqu'au {{ offre.date_limite | date_fr }}{% endif %}</p>
+    </div>
+    <a class="btn btn-secondaire" href="{{ url_for('main.catalogue') }}">Toutes les offres</a>
+</div>
+
+<div class="fiche-offre">
+    <section class="bloc">
+        <h2>Description du poste</h2>
+        {% if offre.description_disponible %}
+            <div class="texte-offre">{{ offre.description }}</div>
+        {% else %}
+            <p class="discret">L'annonce est publiée sous forme d'image sur {{ offre.source | nom_source }} :
+               consultez-la directement sur le site d'origine.</p>
+        {% endif %}
+    </section>
+
+    <aside class="bloc">
+        <h2>En bref</h2>
+        <dl class="resume-offre">
+            <dt>Employeur</dt><dd>{{ offre.entreprise }}</dd>
+            <dt>Lieu</dt><dd>{{ offre.lieu }}{% if offre.province and offre.province not in offre.lieu %} ({{ offre.province }}){% endif %}</dd>
+            {% if offre.date_limite %}<dt>Date limite</dt><dd>{{ offre.date_limite | date_fr }}</dd>{% endif %}
+            {% if offre.competences %}<dt>Compétences repérées</dt><dd>{{ offre.competences | join(', ') }}</dd>{% endif %}
+            <dt>Source</dt><dd>{{ offre.source | nom_source }}</dd>
+        </dl>
+        <a class="btn btn-large" href="{{ offre.url }}" target="_blank" rel="noopener">Voir l'annonce d'origine</a>
+
+        {% if current_user.is_authenticated %}
+            {% if dernier_cv %}
+                <a class="btn btn-secondaire btn-large espace-haut" href="{{ url_for('main.analyse_offre', doc_id=dernier_cv.id, reference=offre.reference) }}">Comparer avec mon CV</a>
+            {% else %}
+                <p class="discret espace-haut"><a href="{{ url_for('main.upload') }}">Déposez un CV</a> pour le comparer à cette offre.</p>
+            {% endif %}
+        {% else %}
+            <p class="discret espace-haut"><a href="{{ url_for('main.register') }}">Créez un compte</a> pour comparer votre CV à cette offre.</p>
+        {% endif %}
+    </aside>
+</div>
+{% endblock %}

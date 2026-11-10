@@ -28,8 +28,7 @@
     </section>
 {% else %}
     <p class="discret">
-        {% if analyse.mode == "openai" %}Analyse réalisée avec {{ analyse.modele }}{% else %}Mode démo (mots-clés){% endif %},
-        le {{ analyse.cree_le.strftime('%d/%m/%Y à %H:%M') }}.
+        Analyse du {{ analyse.cree_le.strftime('%d/%m/%Y à %H:%M') }}{% if analyse.mode == "demo" %} · Mode démo, résultat approximatif{% endif %}
     </p>
     <section class="bloc">
         <ul class="resultats">

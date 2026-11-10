@@ -25,10 +25,7 @@
     </section>
 {% else %}
     <p class="discret">
-        {{ document.original_name }} ·
-        {% if analyse.mode == "openai" %}analyse réalisée avec {{ analyse.modele }}{% else %}mode démo (mots-clés){% endif %},
-        le {{ analyse.cree_le.strftime('%d/%m/%Y à %H:%M') }}.
-        Ce pourcentage peut différer de celui de la liste : il tient compte de l'annonce complète.
+        Analyse du {{ analyse.cree_le.strftime('%d/%m/%Y à %H:%M') }}{% if analyse.mode == "demo" %} · mode démo, résultat approximatif{% endif %}
     </p>
 
     {% if not offre.description_disponible %}
@@ -42,6 +39,7 @@
             <strong>{{ resultat.score }} %</strong>
             compatibilité
             <div class="barre"><span style="width: {{ resultat.score }}%"></span></div>
+            <p class="note">Calculé sur l'annonce complète.</p>
         </div>
         <div>
             <h2>Votre profil</h2>

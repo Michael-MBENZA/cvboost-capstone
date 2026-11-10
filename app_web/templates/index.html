@@ -38,12 +38,13 @@
             <ul class="annonces">
                 {% for o in dernieres_offres %}
                 <li>
-                    <a href="{{ o.url }}" target="_blank" rel="noopener">{{ o.intitule }}</a>
+                    <a href="{{ url_for('main.offre', reference=o.reference) }}">{{ o.intitule }}</a>
                     <span class="infos">{{ o.entreprise }} · {{ o.lieu }}{% if o.date_limite %} · jusqu'au {{ o.date_limite | date_fr }}{% endif %} · {{ o.source | nom_source }}</span>
                 </li>
                 {% endfor %}
             </ul>
             <p class="discret">{{ nb_offres }} offres en cours, issues de mediacongo.net, Radio Okapi et ReliefWeb.</p>
+            <a class="lien-tout" href="{{ url_for('main.catalogue') }}">Parcourir toutes les offres →</a>
         {% else %}
             <p class="discret">Aucune offre chargée pour le moment.</p>
         {% endif %}
