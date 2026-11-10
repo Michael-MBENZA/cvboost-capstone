@@ -1,13 +1,15 @@
+import json
 import os
 import uuid
 
 from flask import (
-    Blueprint, render_template, redirect, url_for, flash, request, current_app
+    Blueprint, render_template, redirect, url_for, flash, request, current_app, abort
 )
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 
-from . import db
+from . import db, ia
+from .extraction import CVIllisible, extraire_texte
 from .models import User, Document
 
 bp = Blueprint("main", __name__)
@@ -176,6 +178,85 @@ def history():
         .all()
     )
     return render_template("history.html", documents=documents)
+
+
+# ---------- Assistant DRH (Sprint 3) ----------
+
+def mon_document(doc_id):
+    """Le document doit appartenir à l'utilisateur connecté (sinon 404 : on ne révèle rien)."""
+    return Document.query.filter_by(id=doc_id, user_id=current_user.id).first_or_404()
+
+
+def texte_du_cv(document):
+    chemin = os.path.join(current_app.config["UPLOAD_FOLDER"], document.stored_name)
+    return extraire_texte(chemin, document.file_type)
+
+
+@bp.route("/documents/<int:doc_id>/offres", methods=["GET", "POST"])
+@login_required
+def offres_compatibles(doc_id):
+    """GET : affiche le classement s'il est déjà en cache. POST (bouton) : lance l'analyse."""
+    document = mon_document(doc_id)
+    try:
+        texte_cv = texte_du_cv(document)
+    except CVIllisible as erreur:
+        flash(str(erreur), "danger")
+        return redirect(url_for("main.history"))
+
+    offres = ia.charger_offres()
+    cle = ia.cle_classement(texte_cv, offres)
+    en_cache = ia.chercher_en_cache(document.id, "classement", None, cle)
+
+    if request.method == "POST" and en_cache is None:
+        try:
+            classement, tokens, mode = ia.classer_offres(texte_cv, offres)
+        except ia.IAIndisponible as erreur:
+            flash(str(erreur), "danger")
+            return redirect(url_for("main.offres_compatibles", doc_id=doc_id))
+        ia.enregistrer(document, "classement", None, cle, classement, tokens, mode)
+        return redirect(url_for("main.offres_compatibles", doc_id=doc_id))  # POST -> GET (pas de double envoi)
+
+    lignes = []
+    if en_cache:
+        for item in json.loads(en_cache.resultat):
+            offre = ia.trouver_offre(item["reference"], offres)
+            if offre:
+                lignes.append({**offre, "score": item["score"], "raison": item["raison"]})
+    return render_template(
+        "offres.html", document=document, lignes=lignes, analyse=en_cache,
+        nb_offres=len(offres), mode=ia.mode_actuel(),
+    )
+
+
+@bp.route("/documents/<int:doc_id>/offres/<reference>", methods=["GET", "POST"])
+@login_required
+def analyse_offre(doc_id, reference):
+    document = mon_document(doc_id)
+    offre = ia.trouver_offre(reference, ia.charger_offres())
+    if offre is None:
+        abort(404)
+    try:
+        texte_cv = texte_du_cv(document)
+    except CVIllisible as erreur:
+        flash(str(erreur), "danger")
+        return redirect(url_for("main.history"))
+
+    cle = ia.cle_detail(texte_cv, offre)
+    en_cache = ia.chercher_en_cache(document.id, "detail", reference, cle)
+
+    if request.method == "POST" and en_cache is None:
+        try:
+            resultat, tokens, mode = ia.analyser_offre(texte_cv, offre)
+        except ia.IAIndisponible as erreur:
+            flash(str(erreur), "danger")
+            return redirect(url_for("main.analyse_offre", doc_id=doc_id, reference=reference))
+        ia.enregistrer(document, "detail", reference, cle, resultat, tokens, mode)
+        return redirect(url_for("main.analyse_offre", doc_id=doc_id, reference=reference))
+
+    return render_template(
+        "analyse.html", document=document, offre=offre, analyse=en_cache,
+        resultat=json.loads(en_cache.resultat) if en_cache else None, mode=ia.mode_actuel(),
+    )
 
 
 @bp.app_errorhandler(413)

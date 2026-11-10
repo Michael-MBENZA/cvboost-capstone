@@ -26,3 +26,10 @@ class Config:
 
     # Journal des téléversements (lu par data_pipeline/logs_parser.py au Sprint 2)
     LOG_FOLDER = os.path.join(BASE_DIR, "logs")
+
+    # Assistant DRH (Sprint 3) : clé lue dans .env, jamais écrite dans le code.
+    # Sans clé, l'assistant fonctionne en "mode démo" (score par mots-clés, gratuit).
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    # Offres d'emploi réelles préparées au Sprint 2 (scraping + nettoyage Pandas)
+    OFFRES_CSV = os.path.join(BASE_DIR, "data", "processed", "jobs_clean.csv")

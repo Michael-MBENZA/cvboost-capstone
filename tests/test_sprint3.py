@@ -73,3 +73,149 @@ def test_fichier_endommage_refuse(tmp_path):
 
 def test_nettoyer():
     assert nettoyer("  Bonjour   le\t monde \n\n\n\n Fin ") == "Bonjour le monde\n\nFin"
+
+
+# ---------- Assistant DRH : classement, analyse détaillée, cache ----------
+
+import csv
+import io
+import json
+
+from app_web import ia
+from app_web.models import Analyse, Document
+
+COLONNES_OFFRES = ["reference", "intitule", "entreprise", "lieu", "province", "date_limite",
+                   "description", "description_disponible", "url", "comp_python", "comp_comptabilite"]
+
+OFFRES = [
+    {"reference": "OEM1", "intitule": "Développeur Python", "entreprise": "ACME", "lieu": "Kinshasa",
+     "province": "Kinshasa", "date_limite": "2026-12-01",
+     "description": "Développer des API Flask, écrire du SQL, analyser des données avec Pandas. " * 3,
+     "description_disponible": "True", "url": "https://exemple.cd/1", "comp_python": "1", "comp_comptabilite": "0"},
+    {"reference": "OEM2", "intitule": "Comptable", "entreprise": "ONG Espoir", "lieu": "Goma",
+     "province": "Nord-Kivu", "date_limite": "2026-12-05", "description": "",
+     "description_disponible": "False", "url": "https://exemple.cd/2", "comp_python": "0", "comp_comptabilite": "1"},
+]
+
+
+def ecrire_offres(app):
+    with open(app.config["OFFRES_CSV"], "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=COLONNES_OFFRES)
+        writer.writeheader()
+        writer.writerows(OFFRES)
+
+
+def deposer_cv_docx(client, texte):
+    doc = DocumentWord()
+    for ligne in texte.split("\n"):
+        doc.add_paragraph(ligne)
+    flux = io.BytesIO()
+    doc.save(flux)
+    flux.seek(0)
+    client.post("/upload", data={"cv": (flux, "mon_cv.docx")}, content_type="multipart/form-data")
+
+
+CV_DEV = ("Michael Mbenza, développeur Python à Kinshasa.\n"
+          "Compétences : Python, Flask, SQL, Pandas, analyse de données.\n"
+          "Expérience : 3 ans de support informatique et de développement d'API.")
+
+
+def preparer(connecte, app):
+    ecrire_offres(app)
+    deposer_cv_docx(connecte, CV_DEV)
+    with app.app_context():
+        return Document.query.one().id
+
+
+def test_classement_demo_et_cache(connecte, app):
+    doc_id = preparer(connecte, app)
+
+    page = connecte.get(f"/documents/{doc_id}/offres").get_data(as_text=True)
+    assert "Lancer l'analyse" in page and "Mode démo" in page   # rien en cache : bouton
+
+    connecte.post(f"/documents/{doc_id}/offres")
+    page = connecte.get(f"/documents/{doc_id}/offres").get_data(as_text=True)
+    assert page.index("Développeur Python") < page.index("Comptable")  # trié par score
+    assert "Annonce en image" in page                                   # OEM2 sans description
+
+    connecte.post(f"/documents/{doc_id}/offres")  # 2e clic : le cache évite un nouveau calcul
+    with app.app_context():
+        assert Analyse.query.filter_by(type="classement").count() == 1
+
+
+def test_analyse_detaillee_demo(connecte, app):
+    doc_id = preparer(connecte, app)
+    connecte.post(f"/documents/{doc_id}/offres/OEM1")
+    page = connecte.get(f"/documents/{doc_id}/offres/OEM1").get_data(as_text=True)
+    assert "Points forts" in page and "Première question d'entretien" in page
+    with app.app_context():
+        analyse = Analyse.query.filter_by(type="detail").one()
+        assert analyse.mode == "demo" and analyse.offre_reference == "OEM1"
+
+
+def test_offre_inconnue_404(connecte, app):
+    doc_id = preparer(connecte, app)
+    assert connecte.get(f"/documents/{doc_id}/offres/INCONNUE").status_code == 404
+
+
+def test_cv_d_un_autre_utilisateur_404(connecte, app):
+    doc_id = preparer(connecte, app)
+    connecte.post("/logout")
+    connecte.post("/register", data={"username": "intrus", "email": "intrus@test.cd",
+                                     "password": "secret1234", "confirm": "secret1234"})
+    connecte.post("/login", data={"email": "intrus@test.cd", "password": "secret1234"})
+    assert connecte.get(f"/documents/{doc_id}/offres").status_code == 404
+    assert connecte.post(f"/documents/{doc_id}/offres/OEM1").status_code == 404
+
+
+def test_mode_openai_simule_et_validation(connecte, app, monkeypatch):
+    """On remplace l'appel réseau par une fausse réponse : on teste notre code, pas OpenAI."""
+    doc_id = preparer(connecte, app)
+    app.config["OPENAI_API_KEY"] = "sk-test-factice"
+    fausse_reponse = {"classement": [
+        {"reference": "OEM2", "score": 140, "raison": "Peu de lien."},     # score hors bornes
+        {"reference": "OEM999", "score": 90, "raison": "Offre inventée"},  # référence inconnue
+    ]}
+    monkeypatch.setattr(ia, "appeler_llm", lambda message: (fausse_reponse, 1234))
+
+    connecte.post(f"/documents/{doc_id}/offres")
+    with app.app_context():
+        analyse = Analyse.query.filter_by(type="classement").one()
+        resultat = json.loads(analyse.resultat)
+    assert analyse.mode == "openai" and analyse.tokens == 1234
+    assert [r["reference"] for r in resultat] == ["OEM2", "OEM1"]  # OEM999 ignorée
+    assert resultat[0]["score"] == 100                             # 140 ramené à 100
+    assert resultat[1]["raison"] == "Offre non évaluée par l'IA."  # OEM1 oubliée : ajoutée à 0
+
+
+def test_ia_indisponible_message_clair(connecte, app, monkeypatch):
+    doc_id = preparer(connecte, app)
+    app.config["OPENAI_API_KEY"] = "sk-test-factice"
+
+    def panne(message):
+        raise ia.IAIndisponible("Le service d'IA est momentanément indisponible. Réessayez plus tard.")
+
+    monkeypatch.setattr(ia, "appeler_llm", panne)
+    page = connecte.post(f"/documents/{doc_id}/offres", follow_redirects=True).get_data(as_text=True)
+    assert "momentanément indisponible" in page
+    with app.app_context():
+        assert Analyse.query.count() == 0  # rien n'est mis en cache en cas d'échec
+
+
+def test_valider_analyse_resiste_a_une_reponse_bizarre():
+    propre = ia.valider_analyse({
+        "score": "abc", "points_forts": "pas une liste",
+        "suggestions_cv": [{"section": "Expérience", "conseil": "Chiffrez vos résultats."}, "texte", {}],
+        "question_entretien": "Parlez-moi de vous.",
+    })
+    assert propre["score"] == 0
+    assert propre["points_forts"] == []
+    assert propre["suggestions_cv"] == [{"section": "Expérience", "conseil": "Chiffrez vos résultats."}]
+    assert propre["resume_profil"] == ""
+
+
+def test_empreinte_change_si_le_cv_change(app):
+    with app.app_context():
+        offre = {"reference": "OEM1", "intitule": "Dev", "description": "Python"}
+        assert ia.cle_detail("CV version 1", offre) != ia.cle_detail("CV version 2", offre)
+        assert ia.cle_detail("CV version 1", offre) == ia.cle_detail("CV version 1", offre)

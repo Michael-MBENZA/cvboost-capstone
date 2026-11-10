@@ -11,6 +11,8 @@ def app(tmp_path):
     class TestConfig(Config):
         TESTING = True
         WTF_CSRF_ENABLED = False  # les tests envoient les formulaires sans jeton (CSRF testé à part)
+        OPENAI_API_KEY = ""  # mode démo : les tests ne paient jamais OpenAI (le mode OpenAI est simulé à part)
+        OFFRES_CSV = str(tmp_path / "offres.csv")
         SQLALCHEMY_DATABASE_URI = "sqlite:///" + str(tmp_path / "test.db")
         UPLOAD_FOLDER = str(tmp_path / "uploads")
         LOG_FOLDER = str(tmp_path / "logs")

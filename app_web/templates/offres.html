@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Offres compatibles{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Offres compatibles</h1>
+        <p>CV : <strong>{{ document.original_name }}</strong> · {{ nb_offres }} offres réelles (mediacongo.net)</p>
+    </div>
+    <a class="btn btn-outline" href="{{ url_for('main.history') }}">← Mon historique</a>
+</div>
+
+{% if not analyse %}
+    <section class="card cta-card">
+        <span class="icon">🤖</span>
+        <h2>Comparer mon CV à toutes les offres</h2>
+        <p>
+            {% if mode == "openai" %}
+                L'Assistant DRH (OpenAI) va lire votre CV et noter sa compatibilité avec chaque offre.
+                Cela prend une vingtaine de secondes.
+            {% else %}
+                <strong>Mode démo</strong> : aucune clé OpenAI n'est configurée. Le score comptera
+                les mots-clés de chaque offre retrouvés dans votre CV.
+            {% endif %}
+        </p>
+        <form method="POST" class="js-chargement">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn">Lancer l'analyse</button>
+        </form>
+    </section>
+{% else %}
+    <p class="meta">
+        {% if analyse.mode == "openai" %}Analyse IA ({{ analyse.modele }}){% else %}Mode démo (mots-clés){% endif %}
+        · réalisée le {{ analyse.cree_le.strftime('%d/%m/%Y à %H:%M') }}
+    </p>
+    <div class="offres-liste">
+        {% for o in lignes %}
+        <article class="card offre-card">
+            <div class="score score-{{ 'haut' if o.score >= 70 else ('moyen' if o.score >= 40 else 'bas') }}">
+                {{ o.score }}<small>%</small>
+            </div>
+            <div class="offre-infos">
+                <h3>{{ o.intitule }}</h3>
+                <p class="offre-meta">{{ o.entreprise }} · {{ o.lieu }}
+                    {% if o.date_limite %} · avant le {{ o.date_limite }}{% endif %}</p>
+                <p class="raison">{{ o.raison }}</p>
+                {% if not o.description_disponible %}
+                    <span class="badge badge-gris">Annonce en image : analyse limitée au titre</span>
+                {% endif %}
+            </div>
+            <a class="btn btn-small" href="{{ url_for('main.analyse_offre', doc_id=document.id, reference=o.reference) }}">Analyse détaillée</a>
+        </article>
+        {% endfor %}
+    </div>
+{% endif %}
+{% endblock %}

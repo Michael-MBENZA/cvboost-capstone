@@ -44,6 +44,29 @@ class Document(db.Model):
 
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
 
+    analyses = db.relationship(
+        "Analyse", backref="document", lazy=True, cascade="all, delete-orphan"
+    )
+
+
+class Analyse(db.Model):
+    """Mémoire (cache) des réponses de l'Assistant DRH : on ne repaie pas OpenAI
+    pour une analyse déjà faite avec le même CV, la même offre et le même prompt."""
+
+    __tablename__ = "analyses"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    document_id = db.Column(db.Integer, db.ForeignKey("documents.id"), nullable=False)
+    type = db.Column(db.String(20), nullable=False)          # "classement" ou "detail"
+    offre_reference = db.Column(db.String(30))               # ex : OEM45094 (vide pour un classement)
+    empreinte = db.Column(db.String(64), nullable=False, index=True)  # SHA-256 (CV + offre(s) + prompt + modèle)
+    resultat = db.Column(db.Text, nullable=False)            # réponse au format JSON
+    mode = db.Column(db.String(10), nullable=False)          # "openai" ou "demo"
+    modele = db.Column(db.String(50))                        # ex : gpt-4o-mini
+    tokens = db.Column(db.Integer, default=0)                # consommation (suivi des coûts)
+    cree_le = db.Column(db.DateTime, default=maintenant)
+
 
 @login_manager.user_loader
 def load_user(user_id):

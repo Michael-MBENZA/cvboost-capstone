@@ -201,6 +201,48 @@ tbody tr:hover { background: #f8fafc; }
 .empty-state { text-align: center; padding: 2.5rem 1rem; color: var(--gris); }
 .empty-state .icon { font-size: 2.5rem; display: block; margin-bottom: .5rem; }
 
+/* ---------- Assistant DRH (Sprint 3) ---------- */
+.btn-small { padding: .4rem .9rem; font-size: .85rem; white-space: nowrap; }
+.meta { color: var(--gris); font-size: .9rem; margin: 0 0 1rem; }
+.cta-card { text-align: center; max-width: 640px; margin: 0 auto; }
+.cta-card .icon { font-size: 2.5rem; display: block; margin-bottom: .5rem; }
+.cta-card p { color: var(--gris); }
+
+.offres-liste { display: grid; gap: 1rem; }
+.offre-card { display: flex; align-items: center; gap: 1.25rem; padding: 1.25rem; }
+.offre-infos { flex: 1; min-width: 0; }
+.offre-infos h3 { font-size: 1.05rem; margin-bottom: .2rem; }
+.offre-meta { color: var(--gris); margin: 0 0 .4rem; font-size: .9rem; }
+.raison { margin: 0 0 .4rem; }
+
+.score {
+    flex-shrink: 0; display: grid; place-items: center;
+    width: 64px; height: 64px; border-radius: 50%;
+    font-weight: 800; font-size: 1.2rem; line-height: 1;
+}
+.score small { font-size: .7rem; font-weight: 600; }
+.score-grand { width: 96px; height: 96px; font-size: 1.8rem; }
+.score-haut  { background: #ecfdf3; color: var(--vert); border: 3px solid var(--vert); }
+.score-moyen { background: #fffaeb; color: #b54708; border: 3px solid #f79009; }
+.score-bas   { background: #fef3f2; color: var(--rouge); border: 3px solid var(--rouge); }
+.badge-gris  { background: #f2f4f7; color: #475467; }
+
+.analyse-entete { display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.25rem; }
+.grille-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem; }
+.liste { margin: 0; padding-left: 1.2rem; }
+.liste li, .suggestions li { margin-bottom: .45rem; }
+.suggestions { padding-left: 1.3rem; }
+.question-card { margin-top: 1.25rem; }
+.question-card blockquote {
+    margin: 0; padding: 1rem 1.25rem; border-left: 4px solid var(--bleu);
+    background: var(--bleu-clair); border-radius: 8px; font-size: 1.05rem; color: var(--marine);
+}
+section.card + section.card { margin-top: 1.25rem; }
+
+@media (max-width: 640px) {
+    .offre-card, .analyse-entete { flex-direction: column; align-items: flex-start; }
+}
+
 /* ---------- Pied de page ---------- */
 .footer { background: var(--marine); color: #aab6c6; margin-top: 2rem; }
 .footer-inner {
