@@ -1,64 +1,14 @@
 {
-  "corpus": "France-Travail-ML/Offres-Emplois-JAN-26-JUIN-26-RAW",
+  "corpus": "michsethowusu/french-lingala_sentence-pairs",
   "graine": 42,
-  "offres_brutes": 5000,
-  "offres_exploitables": 4996,
-  "doublons_supprimes_sha256": 161,
-  "domaines_trop_rares_retires": [
-    "B"
-  ],
-  "offres_finales": 4829,
+  "paires_brutes": 691895,
+  "paires_apres_nettoyage": 50372,
+  "doublons_supprimes_sha256": 7442,
+  "paires_finales": 42930,
   "taille": {
-    "train": 3863,
-    "validation": 483,
-    "test": 483
-  },
-  "repartition_domaines": {
-    "train": {
-      "A": 79,
-      "C": 80,
-      "D": 396,
-      "E": 33,
-      "F": 349,
-      "G": 196,
-      "H": 745,
-      "I": 323,
-      "J": 460,
-      "K": 438,
-      "L": 18,
-      "M": 305,
-      "N": 441
-    },
-    "validation": {
-      "A": 10,
-      "C": 10,
-      "D": 50,
-      "E": 4,
-      "F": 44,
-      "G": 25,
-      "H": 93,
-      "I": 40,
-      "J": 57,
-      "K": 55,
-      "L": 2,
-      "M": 38,
-      "N": 55
-    },
-    "test": {
-      "A": 10,
-      "C": 10,
-      "D": 50,
-      "E": 4,
-      "F": 44,
-      "G": 25,
-      "H": 93,
-      "I": 40,
-      "J": 57,
-      "K": 55,
-      "L": 2,
-      "M": 38,
-      "N": 55
-    }
+    "test": 4293,
+    "validation": 4293,
+    "train": 34344
   },
   "assertions_anti_fuite": "OK"
 }

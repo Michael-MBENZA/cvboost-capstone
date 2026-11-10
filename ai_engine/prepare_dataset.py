@@ -1,22 +1,20 @@
-"""Préparation d'un jeu de données NLP SANS FUITE (Sprint 3).
+"""Pipeline anti-fuite (Sprint 3) : corpus parallèle Français -> Lingala pour le fine-tuning de NLLB.
 
-Corpus : offres d'emploi réelles de France Travail, publiées sur Hugging Face
-         (France-Travail-ML/Offres-Emplois-JAN-26-JUIN-26-RAW).
-Tâche visée : à partir du texte d'une offre (titre + description), prédire son
-         DOMAINE PROFESSIONNEL (grand domaine du code ROME : santé, commerce, industrie...).
-         Utile plus tard pour classer automatiquement les offres scrapées.
+Corpus Hugging Face : michsethowusu/french-lingala_sentence-pairs (691 895 paires alignées
+automatiquement, chacune avec un score de similarité).
 
 Étapes :
-  1. téléchargement en streaming (sans tout télécharger) + cache local
-  2. nettoyage (textes trop courts, codes ROME manquants)
-  3. empreinte SHA-256 de chaque texte normalisé -> déduplication stricte
-  4. découpage étanche 80 % train / 10 % validation / 10 % test, stratifié par domaine
+  1. chargement depuis Hugging Face (mis en cache localement après le 1er téléchargement : 55 Mo)
+  2. nettoyage : alignements douteux (similarité < 1.08), phrases trop courtes ou trop longues,
+     rapport de longueur incohérent, « traduction » identique à l'original
+  3. empreintes SHA-256 de la phrase française ET de la phrase lingala normalisées
+     -> déduplication stricte : une même phrase (d'un côté ou de l'autre) n'existe qu'une fois
+  4. découpage étanche 80 % train / 10 % validation / 10 % test (graine fixe = reproductible)
   5. assertions automatiques : aucune empreinte partagée entre deux sous-ensembles, etc.
   6. sauvegarde : ai_engine/data/{train,validation,test}.jsonl + stats.json
 
 Utilisation :
-    python -m ai_engine.prepare_dataset            # 5 000 offres (1er lancement : quelques minutes)
-    python -m ai_engine.prepare_dataset --n 10000
+    python -m ai_engine.prepare_dataset
 """
 import argparse
 import hashlib
@@ -25,207 +23,145 @@ import os
 import random
 import re
 import unicodedata
-from collections import Counter, defaultdict
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DOSSIER_DATA = os.path.join(BASE_DIR, "ai_engine", "data")
-CACHE_BRUT = os.path.join(DOSSIER_DATA, "cache_brut.jsonl")
 
-NOM_CORPUS = "France-Travail-ML/Offres-Emplois-JAN-26-JUIN-26-RAW"
-# On ne garde QUE ces colonnes : le corpus contient aussi des contacts (e-mails, téléphones)
-# qu'on ne veut pas manipuler (données personnelles).
-COLONNES = ["id", "intitule", "description", "romeCode", "romeLibelle", "typeContrat"]
-
-GRAINE = 42  # même graine = même découpage à chaque exécution (reproductibilité)
+NOM_CORPUS = "michsethowusu/french-lingala_sentence-pairs"
+GRAINE = 42
 PROPORTIONS = {"train": 0.8, "validation": 0.1, "test": 0.1}
-LONGUEUR_MIN = 100  # caractères : en dessous, la description est inexploitable
-MIN_PAR_DOMAINE = 10  # un domaine trop rare ne peut pas être réparti sur 3 sous-ensembles
-
-# Première lettre du code ROME = grand domaine professionnel
-DOMAINES_ROME = {
-    "A": "Agriculture et pêche, espaces naturels et verts, soins aux animaux",
-    "B": "Arts et façonnage d'ouvrages d'art",
-    "C": "Banque, assurance, immobilier",
-    "D": "Commerce, vente et grande distribution",
-    "E": "Communication, média et multimédia",
-    "F": "Construction, bâtiment et travaux publics",
-    "G": "Hôtellerie-restauration, tourisme, loisirs et animation",
-    "H": "Industrie",
-    "I": "Installation et maintenance",
-    "J": "Santé",
-    "K": "Services à la personne et à la collectivité",
-    "L": "Spectacle",
-    "M": "Support à l'entreprise",
-    "N": "Transport et logistique",
-}
+SIMILARITE_MIN = 1.08   # score d'alignement du corpus : en dessous, les paires sont souvent fausses
+LONGUEUR_MIN, LONGUEUR_MAX = 3, 300  # caractères
+RAPPORT_MAX = 3         # une traduction n'est pas 3 fois plus longue (ou plus courte) que l'original
 
 
-# ---------- 1. Téléchargement ----------
+# ---------- 1. Chargement ----------
 
-def telecharger(n):
-    """Renvoie n offres brutes. Utilise le cache local s'il contient assez de lignes."""
-    if os.path.exists(CACHE_BRUT):
-        with open(CACHE_BRUT, encoding="utf-8") as f:
-            lignes = [json.loads(l) for l in f]
-        if len(lignes) >= n:
-            print(f"Cache local utilisé : {CACHE_BRUT} ({len(lignes)} offres)")
-            return lignes[:n]
+def charger():
+    """Renvoie la liste des paires brutes {French, Lingala, similarity}."""
+    from datasets import load_dataset  # import ici : les tests n'en ont pas besoin
 
-    from datasets import load_dataset  # import ici : inutile si le cache suffit
-
-    print(f"Téléchargement en streaming de {n} offres depuis Hugging Face ({NOM_CORPUS})...")
-    flux = load_dataset(NOM_CORPUS, split="train", streaming=True).select_columns(COLONNES)
-    lignes = list(flux.take(n))  # streaming : on ne lit que le début du corpus (366 Mo au total)
-
-    os.makedirs(DOSSIER_DATA, exist_ok=True)
-    with open(CACHE_BRUT, "w", encoding="utf-8") as f:
-        for ligne in lignes:
-            f.write(json.dumps(ligne, ensure_ascii=False) + "\n")
-    return lignes
+    corpus = load_dataset(NOM_CORPUS, split="train")
+    return corpus.to_list()
 
 
-# ---------- 2-3. Nettoyage, empreinte, déduplication ----------
+# ---------- 2. Nettoyage ----------
 
-def normaliser(texte):
-    """Forme canonique pour comparer deux textes : minuscules, sans accents, espaces uniques."""
-    texte = unicodedata.normalize("NFKD", texte or "")
-    texte = "".join(c for c in texte if not unicodedata.combining(c))
-    return re.sub(r"\s+", " ", texte).strip().lower()
+def espaces(texte):
+    return " ".join((texte or "").split())
 
 
-def empreinte(intitule, description):
-    """SHA-256 du titre + description normalisés : deux offres identiques ont la même empreinte."""
-    contenu = normaliser(intitule) + " || " + normaliser(description)
-    return hashlib.sha256(contenu.encode("utf-8")).hexdigest()
+def paire_valide(fr, ln, similarite):
+    return (
+        similarite is not None and similarite >= SIMILARITE_MIN
+        and LONGUEUR_MIN <= len(fr) <= LONGUEUR_MAX
+        and LONGUEUR_MIN <= len(ln) <= LONGUEUR_MAX
+        and 1 / RAPPORT_MAX <= len(fr) / len(ln) <= RAPPORT_MAX
+        and fr.lower() != ln.lower()
+    )
 
 
 def nettoyer(lignes):
-    """Garde les offres exploitables et construit les champs utiles."""
-    propres = []
+    paires = []
     for l in lignes:
-        description = re.sub(r"\s+", " ", l.get("description") or "").strip()
-        intitule = re.sub(r"\s+", " ", l.get("intitule") or "").strip()
-        code = (l.get("romeCode") or "").strip()
-        if len(description) < LONGUEUR_MIN or not code or code[0] not in DOMAINES_ROME:
+        fr, ln = espaces(l.get("French")), espaces(l.get("Lingala"))
+        if fr and ln and paire_valide(fr, ln, l.get("similarity")):
+            paires.append({"fr": fr, "ln": ln, "similarite": round(float(l["similarity"]), 4)})
+    return paires
+
+
+# ---------- 3. Empreintes SHA-256 et déduplication ----------
+
+def normaliser(texte):
+    """Forme canonique : minuscules, sans accents, sans ponctuation, espaces uniques.
+    « Bonjour, Kinshasa ! » et « bonjour kinshasa » donnent la même empreinte."""
+    texte = unicodedata.normalize("NFKD", texte.lower())
+    texte = "".join(c for c in texte if not unicodedata.combining(c))
+    texte = re.sub(r"[^\w\s]", " ", texte)
+    return " ".join(texte.split())
+
+
+def empreinte(texte):
+    return hashlib.sha256(normaliser(texte).encode("utf-8")).hexdigest()
+
+
+def dedupliquer(paires):
+    """Déduplication stricte sur les DEUX langues.
+
+    On garde d'abord les paires les mieux alignées (similarité la plus haute). Une paire est
+    écartée si sa phrase française OU sa phrase lingala a déjà été vue : sinon, la même phrase
+    pourrait se retrouver dans le train et dans le test avec une autre traduction (fuite).
+    """
+    vues_fr, vues_ln, uniques = set(), set(), []
+    for p in sorted(paires, key=lambda p: p["similarite"], reverse=True):
+        cle_fr, cle_ln = empreinte(p["fr"]), empreinte(p["ln"])
+        if cle_fr in vues_fr or cle_ln in vues_ln:
             continue
-        propres.append({
-            "id": str(l.get("id")),
-            "intitule": intitule,
-            "description": description,
-            "texte": f"{intitule}. {description}",
-            "rome_code": code,
-            "metier": l.get("romeLibelle") or "",
-            "domaine_code": code[0],
-            "domaine": DOMAINES_ROME[code[0]],
-            "type_contrat": l.get("typeContrat") or "",
-            "empreinte": empreinte(intitule, description),
-        })
-    return propres
-
-
-def dedupliquer(exemples):
-    """Garde la première occurrence de chaque empreinte. Renvoie (uniques, nb_supprimés)."""
-    vues, uniques = set(), []
-    for ex in exemples:
-        if ex["empreinte"] not in vues:
-            vues.add(ex["empreinte"])
-            uniques.append(ex)
-    return uniques, len(exemples) - len(uniques)
-
-
-def retirer_domaines_rares(exemples, minimum=MIN_PAR_DOMAINE):
-    compte = Counter(ex["domaine_code"] for ex in exemples)
-    gardes = [ex for ex in exemples if compte[ex["domaine_code"]] >= minimum]
-    retires = sorted(code for code, n in compte.items() if n < minimum)
-    return gardes, retires
+        vues_fr.add(cle_fr)
+        vues_ln.add(cle_ln)
+        uniques.append({**p, "empreinte_fr": cle_fr, "empreinte_ln": cle_ln})
+    return uniques, len(paires) - len(uniques)
 
 
 # ---------- 4. Découpage étanche ----------
 
-def decouper(exemples, graine=GRAINE):
-    """Découpage 80/10/10 stratifié : chaque domaine est réparti dans les mêmes proportions."""
-    par_domaine = defaultdict(list)
-    for ex in exemples:
-        par_domaine[ex["domaine_code"]].append(ex)
-
-    hasard = random.Random(graine)
-    splits = {nom: [] for nom in PROPORTIONS}
-    for code in sorted(par_domaine):
-        groupe = par_domaine[code]
-        hasard.shuffle(groupe)
-        n = len(groupe)
-        n_val = max(1, round(n * PROPORTIONS["validation"]))
-        n_test = max(1, round(n * PROPORTIONS["test"]))
-        splits["test"].extend(groupe[:n_test])
-        splits["validation"].extend(groupe[n_test:n_test + n_val])
-        splits["train"].extend(groupe[n_test + n_val:])
-    for nom in splits:
-        hasard.shuffle(splits[nom])
-    return splits
+def decouper(paires, graine=GRAINE):
+    melange = list(paires)
+    random.Random(graine).shuffle(melange)
+    n = len(melange)
+    n_val = round(n * PROPORTIONS["validation"])
+    n_test = round(n * PROPORTIONS["test"])
+    return {
+        "test": melange[:n_test],
+        "validation": melange[n_test:n_test + n_val],
+        "train": melange[n_test + n_val:],
+    }
 
 
 # ---------- 5. Assertions anti-fuite ----------
 
 def verifier(splits, total_attendu):
     """Lève une AssertionError si une seule règle anti-fuite est violée."""
-    empreintes = {nom: [ex["empreinte"] for ex in exs] for nom, exs in splits.items()}
+    for langue in ("fr", "ln"):
+        cle = f"empreinte_{langue}"
+        ensembles = {nom: [p[cle] for p in exs] for nom, exs in splits.items()}
+        for nom, liste in ensembles.items():
+            assert liste, f"le sous-ensemble {nom} est vide"
+            assert len(liste) == len(set(liste)), f"doublon ({langue}) à l'intérieur de {nom}"
+        for a, b in (("train", "validation"), ("train", "test"), ("validation", "test")):
+            communes = set(ensembles[a]) & set(ensembles[b])
+            assert not communes, f"FUITE {a}/{b} : {len(communes)} phrases ({langue}) communes"
 
-    # a) Aucun doublon à l'intérieur d'un sous-ensemble
-    for nom, liste in empreintes.items():
-        assert len(liste) == len(set(liste)), f"Doublon à l'intérieur de {nom}"
-
-    # b) Aucune empreinte partagée entre deux sous-ensembles (le cœur de l'anti-fuite)
-    tr, va, te = (set(empreintes[n]) for n in ("train", "validation", "test"))
-    assert not (tr & va), f"FUITE train/validation : {len(tr & va)} textes communs"
-    assert not (tr & te), f"FUITE train/test : {len(tr & te)} textes communs"
-    assert not (va & te), f"FUITE validation/test : {len(va & te)} textes communs"
-
-    # c) Rien de perdu, rien d'inventé
     total = sum(len(exs) for exs in splits.values())
-    assert total == total_attendu, f"{total} exemples répartis au lieu de {total_attendu}"
-
-    # d) Proportions respectées (tolérance de 2 points)
+    assert total == total_attendu, f"{total} paires réparties au lieu de {total_attendu}"
     for nom, part in PROPORTIONS.items():
         reel = len(splits[nom]) / total
-        assert abs(reel - part) <= 0.02, f"{nom} : {reel:.1%} au lieu de {part:.0%}"
-
-    # e) Chaque domaine du test et de la validation existe aussi dans le train
-    domaines_train = {ex["domaine_code"] for ex in splits["train"]}
-    for nom in ("validation", "test"):
-        inconnus = {ex["domaine_code"] for ex in splits[nom]} - domaines_train
-        assert not inconnus, f"Domaines de {nom} absents du train : {inconnus}"
+        assert abs(reel - part) <= 0.01, f"{nom} : {reel:.1%} au lieu de {part:.0%}"
 
 
-# ---------- 6. Pipeline complet ----------
+# ---------- Pipeline complet ----------
 
 def preparer(lignes_brutes, graine=GRAINE):
-    """Brut -> (splits vérifiés, statistiques). Ne fait aucun accès réseau ni disque."""
-    propres = nettoyer(lignes_brutes)
-    uniques, nb_doublons = dedupliquer(propres)
-    gardes, domaines_retires = retirer_domaines_rares(uniques)
-    splits = decouper(gardes, graine)
-    verifier(splits, total_attendu=len(gardes))
-
+    """Brut -> (splits vérifiés, statistiques). Aucun accès réseau ni disque."""
+    paires = nettoyer(lignes_brutes)
+    uniques, nb_doublons = dedupliquer(paires)
+    splits = decouper(uniques, graine)
+    verifier(splits, total_attendu=len(uniques))
     stats = {
         "corpus": NOM_CORPUS,
         "graine": graine,
-        "offres_brutes": len(lignes_brutes),
-        "offres_exploitables": len(propres),
+        "paires_brutes": len(lignes_brutes),
+        "paires_apres_nettoyage": len(paires),
         "doublons_supprimes_sha256": nb_doublons,
-        "domaines_trop_rares_retires": domaines_retires,
-        "offres_finales": len(gardes),
+        "paires_finales": len(uniques),
         "taille": {nom: len(exs) for nom, exs in splits.items()},
-        "repartition_domaines": {
-            nom: dict(sorted(Counter(ex["domaine_code"] for ex in exs).items()))
-            for nom, exs in splits.items()
-        },
         "assertions_anti_fuite": "OK",
     }
     return splits, stats
 
 
 def sauvegarder(splits, stats, dossier=DOSSIER_DATA):
-    """Écrit les 3 sous-ensembles au format Hugging Face (DatasetDict) puis en JSONL."""
+    """Écrit les sous-ensembles au format Hugging Face (DatasetDict) puis en JSONL."""
     from datasets import Dataset, DatasetDict
 
     os.makedirs(dossier, exist_ok=True)
@@ -238,19 +174,16 @@ def sauvegarder(splits, stats, dossier=DOSSIER_DATA):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Dataset d'offres d'emploi sans fuite")
-    parser.add_argument("--n", type=int, default=5000, help="nombre d'offres à télécharger (défaut : 5000)")
-    args = parser.parse_args()
-
-    brutes = telecharger(args.n)
+    argparse.ArgumentParser(description="Corpus Français-Lingala sans fuite").parse_args()
+    brutes = charger()
     splits, stats = preparer(brutes)
     dataset = sauvegarder(splits, stats)
 
     print(dataset)
-    print(f"\nOffres brutes            : {stats['offres_brutes']}")
-    print(f"Offres exploitables      : {stats['offres_exploitables']}")
+    print(f"\nPaires brutes            : {stats['paires_brutes']}")
+    print(f"Après nettoyage          : {stats['paires_apres_nettoyage']}")
     print(f"Doublons supprimés (SHA) : {stats['doublons_supprimes_sha256']}")
-    print(f"Domaines rares retirés   : {stats['domaines_trop_rares_retires']}")
     print(f"Taille des sous-ensembles: {stats['taille']}")
-    print("Assertions anti-fuite    : OK (aucun texte commun entre train, validation et test)")
-    print(f"Fichiers                 : {os.path.relpath(DOSSIER_DATA, BASE_DIR)}")
+    print("Assertions anti-fuite    : OK (aucune phrase commune entre train, validation et test)")
+    exemple = splits["test"][0]
+    print(f"Exemple (test)           : {exemple['fr']}  =>  {exemple['ln']}")
