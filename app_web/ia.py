@@ -42,6 +42,7 @@ def charger_offres(chemin=None):
     with open(chemin, encoding="utf-8", newline="") as f:
         for ligne in csv.DictReader(f):
             offres.append({
+                "source": ligne.get("source") or "mediacongo",
                 "reference": ligne["reference"],
                 "intitule": ligne["intitule"],
                 "entreprise": ligne["entreprise"],
