@@ -37,3 +37,9 @@ ai_engine/data/*.jsonl
 .claude/
 # Notes de travail (le document final sera livré en PDF)
 docs/
+# Fine-tuning : on versionne l'adaptateur et resultats.json, pas les checkpoints intermédiaires
+ai_engine/modele_lora/checkpoints/
+ai_engine/modele_lora_essai/
+
+# Fichiers personnels non demandés par l'énoncé : gardés en local, jamais publiés
+ai_engine/ENTRAINEMENT.md
