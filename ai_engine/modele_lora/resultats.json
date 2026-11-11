@@ -1,0 +1,60 @@
+{
+  "modele_de_base": "facebook/nllb-200-distilled-600M",
+  "langues": "fra_Latn -> lin_Latn",
+  "lora": {
+    "r": 8,
+    "lora_alpha": 16,
+    "lora_dropout": 0.05,
+    "target_modules": [
+      "q_proj",
+      "v_proj"
+    ]
+  },
+  "parametres_entrainables": 1179648,
+  "parametres_total": 616253440,
+  "pourcentage_entraine": 0.191,
+  "taille_dataset": {
+    "train": 34344,
+    "validation": 4293,
+    "test": 4293
+  },
+  "epoques": 3,
+  "sacrebleu_test_avant": 25.61,
+  "sacrebleu_test_apres": 27.68,
+  "gain_bleu": 2.07,
+  "exemples": [
+    {
+      "fr": "Cette qualité est très utile pour la vie intérieure.",
+      "avant": "Ezaleli yango ezali na ntina mingi mpo na bomoi ya kati.",
+      "apres": "Ezaleli yango ezali na ntina mingi mpo na bomoi ya kati.",
+      "reference": "Ezaleli yango ezali na ntina mpenza mpo na bato ya bikólo nyonso."
+    },
+    {
+      "fr": "[img] [/img] J'appelle sa de l'abus de pouvoir !",
+      "avant": "[img] [/img] Nazali kobenga ye abusa bokonzi!",
+      "apres": "[img] [/img] ya te pongo yo!",
+      "reference": "[Mim/Ue] Nayami mo atta na"
+    },
+    {
+      "fr": "Il n'était pas attendu de nous que nous vivions sans transgresser une loi ou une autre.",
+      "avant": "Tozalaki te na mposa ya kozala na bomoi kozanga kobuka mobeko moko to mosusu.",
+      "apres": "Tozalaki kozela te ete tozala na bomoi kozanga kobuka mobeko moko to mosusu.",
+      "reference": "Esengelaki te kozela ete tokowumela na kozanga kobuka mobeko moko to mosusu."
+    },
+    {
+      "fr": "de l'équité;",
+      "avant": "bosembo;",
+      "apres": "ya pas de justice;",
+      "reference": "Toko sembako;"
+    },
+    {
+      "fr": "Des choses que nous savons que nous ne savons pas",
+      "avant": "Makambo oyo toyebi oyo toyebi te",
+      "apres": "Makambo oyo toyebi toyebi te",
+      "reference": "yo te amo mas que tu a mi ya"
+    }
+  ],
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "duree_minutes": 27.7,
+  "mode_essai": false
+}

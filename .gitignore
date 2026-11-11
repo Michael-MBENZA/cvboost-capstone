@@ -43,3 +43,4 @@ ai_engine/modele_lora_essai/
 
 # Fichiers personnels non demandés par l'énoncé : gardés en local, jamais publiés
 ai_engine/ENTRAINEMENT.md
+ai_engine/modele_lora/README.md
