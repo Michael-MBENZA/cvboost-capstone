@@ -59,7 +59,7 @@ class Analyse(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     document_id = db.Column(db.Integer, db.ForeignKey("documents.id"), nullable=False)
     type = db.Column(db.String(20), nullable=False)          # "classement" ou "detail"
-    offre_reference = db.Column(db.String(30))               # ex : OEM45094 (vide pour un classement)
+    offre_reference = db.Column(db.String(80))               # ex : OEM45094 ou RO-... (jusqu'à 63 caractères) ; vide pour un classement
     empreinte = db.Column(db.String(64), nullable=False, index=True)  # SHA-256 (CV + offre(s) + prompt + modèle)
     resultat = db.Column(db.Text, nullable=False)            # réponse au format JSON
     mode = db.Column(db.String(10), nullable=False)          # "openai" ou "demo"

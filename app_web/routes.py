@@ -221,7 +221,7 @@ def upload():
 
         # 5. Enregistrement en base
         doc = Document(
-            original_name=secure_filename(fichier.filename) or f"cv.{ext}",
+            original_name=(secure_filename(fichier.filename) or f"cv.{ext}")[:255],  # PostgreSQL refuse plus de 255 caractères
             stored_name=stored_name,
             file_type=ext,
             size_bytes=os.path.getsize(chemin),
