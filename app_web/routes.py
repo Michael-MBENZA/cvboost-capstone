@@ -1,16 +1,17 @@
 import json
+from datetime import datetime, timedelta, timezone
 import os
 import uuid
 
 from flask import (
-    Blueprint, render_template, redirect, url_for, flash, request, current_app, abort
+    Blueprint, render_template, redirect, url_for, flash, request, current_app, abort, jsonify
 )
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 
 from . import db, ia
 from .extraction import CVIllisible, extraire_texte
-from .models import User, Document
+from .models import User, Document, Entretien
 
 bp = Blueprint("main", __name__)
 
@@ -325,6 +326,104 @@ def analyse_offre(doc_id, reference):
         "analyse.html", document=document, offre=offre, analyse=en_cache,
         resultat=json.loads(en_cache.resultat) if en_cache else None, mode=ia.mode_actuel(),
     )
+
+
+# ---------- Simulation d'entretien VOCAL (Sprint 3) ----------
+
+def offre_ou_404(reference):
+    offre_trouvee = ia.trouver_offre(reference, ia.charger_offres())
+    if offre_trouvee is None:
+        abort(404)
+    return offre_trouvee
+
+
+@bp.route("/documents/<int:doc_id>/offres/<reference>/entretien")
+@login_required
+def entretien(doc_id, reference):
+    document = mon_document(doc_id)
+    offre_trouvee = offre_ou_404(reference)
+    precedents = (Entretien.query.filter_by(document_id=document.id, offre_reference=reference)
+                  .filter(Entretien.bilan.isnot(None)).order_by(Entretien.cree_le.desc()).limit(5).all())
+    # Dernier entretien interrompu (page fermée, coupure...) dont la transcription a été sauvegardée
+    sans_bilan = (Entretien.query.filter_by(document_id=document.id, offre_reference=reference, bilan=None)
+                  .order_by(Entretien.cree_le.desc()).first())
+    if sans_bilan and not any(e["role"] == "candidat"
+                              for e in ia.nettoyer_transcription(json.loads(sans_bilan.transcription or "[]"))):
+        sans_bilan = None
+    return render_template(
+        "entretien.html", document=document, offre=offre_trouvee, sans_bilan=sans_bilan,
+        precedents=[{"date": e.cree_le, "bilan": json.loads(e.bilan)} for e in precedents],
+        duree_max=ia.DUREE_MAX_SECONDES, cle_presente=ia.mode_actuel() == "openai",
+    )
+
+
+@bp.route("/documents/<int:doc_id>/offres/<reference>/entretien/session", methods=["POST"])
+@login_required
+def session_entretien(doc_id, reference):
+    """Le navigateur envoie son offre WebRTC (SDP) ; le serveur la transmet à OpenAI avec la clé
+    (qui ne quitte jamais le serveur) et renvoie la réponse SDP."""
+    document = mon_document(doc_id)
+    offre_trouvee = offre_ou_404(reference)
+
+    depuis = datetime.now(timezone.utc) - timedelta(hours=1)
+    recents = Entretien.query.filter(Entretien.user_id == current_user.id, Entretien.cree_le >= depuis).count()
+    if recents >= ia.LIMITE_PAR_HEURE:
+        return jsonify(erreur=f"Limite atteinte : {ia.LIMITE_PAR_HEURE} entretiens par heure. Réessayez plus tard."), 429
+    try:
+        texte_cv = texte_du_cv(document)  # extraction du CV au déclenchement (exigence de l'énoncé)
+        sdp_reponse = ia.creer_session_vocale(texte_cv, offre_trouvee, (request.get_json(silent=True) or {}).get("sdp"))
+    except (CVIllisible, ia.EntretienRefuse, ia.IAIndisponible) as erreur:
+        return jsonify(erreur=str(erreur)), 400
+
+    nouvel = Entretien(user_id=current_user.id, document_id=document.id, offre_reference=reference)
+    db.session.add(nouvel)
+    db.session.commit()
+    return jsonify(sdp=sdp_reponse, entretien_id=nouvel.id, duree_max=ia.DUREE_MAX_SECONDES,
+                   ouverture=ia.CONSIGNE_OUVERTURE)
+
+
+@bp.route("/documents/<int:doc_id>/offres/<reference>/entretien/<int:entretien_id>/bilan", methods=["POST"])
+@login_required
+def bilan_entretien(doc_id, reference, entretien_id):
+    """Le navigateur envoie la transcription :
+    - pendant l'entretien (final=false), toutes les 20 s : simple sauvegarde, rien n'est perdu
+      si la page est fermée ou si la connexion coupe ;
+    - à la fin (final=true) : on calcule et renvoie le bilan noté.
+    Si la transcription envoyée est vide mais qu'une sauvegarde existe, on utilise la sauvegarde."""
+    en_cours = Entretien.query.filter_by(id=entretien_id, user_id=current_user.id,
+                                         document_id=doc_id, offre_reference=reference).first_or_404()
+    if en_cours.bilan:
+        return jsonify(bilan=json.loads(en_cours.bilan))
+
+    donnees = request.get_json(silent=True) or {}
+    echanges = ia.nettoyer_transcription(donnees.get("echanges"))
+    deja_sauvee = ia.nettoyer_transcription(json.loads(en_cours.transcription or "[]"))
+    if len(echanges) < len(deja_sauvee):
+        echanges = deja_sauvee
+    try:
+        duree = int(donnees.get("duree") or 0)
+    except (TypeError, ValueError):
+        duree = 0
+    duree = max(en_cours.duree_secondes or 0, min(max(duree, 0), ia.DUREE_MAX_SECONDES + 60))
+    en_cours.transcription = json.dumps(echanges, ensure_ascii=False)
+    en_cours.duree_secondes = duree
+    db.session.commit()
+
+    if not donnees.get("final", True):
+        return jsonify(sauvegarde=len(echanges))
+
+    if sum(1 for e in echanges if e["role"] == "candidat") < ia.MIN_REPONSES_BILAN:
+        return jsonify(erreur="Pas de bilan : Amina n'a entendu aucune réponse. Vérifiez que le bon micro "
+                              "est sélectionné et que le son n'est pas coupé, puis recommencez."), 400
+    try:
+        bilan, tokens = ia.bilan_entretien(offre_ou_404(reference), echanges, duree)
+    except ia.IAIndisponible as erreur:
+        return jsonify(erreur=str(erreur) + " Votre entretien est sauvegardé : rechargez la page pour "
+                                            "relancer le bilan."), 503
+    en_cours.bilan = json.dumps(bilan, ensure_ascii=False)
+    en_cours.tokens = tokens
+    db.session.commit()
+    return jsonify(bilan=bilan)
 
 
 @bp.app_errorhandler(413)

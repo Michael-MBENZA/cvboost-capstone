@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Entretien vocal{% endblock %}
+
+{% block content %}
+<div class="titre-page">
+    <div>
+        <h1>Entretien vocal</h1>
+        <p>{{ offre.intitule }} · {{ offre.entreprise }} · {{ offre.lieu }}</p>
+    </div>
+    <a class="btn btn-secondaire" href="{{ url_for('main.analyse_offre', doc_id=document.id, reference=offre.reference) }}">Retour à l'analyse</a>
+</div>
+
+<section class="bloc entretien-vocal" id="entretien"
+         data-session="{{ url_for('main.session_entretien', doc_id=document.id, reference=offre.reference) }}"
+         data-bilan="{{ url_for('main.bilan_entretien', doc_id=document.id, reference=offre.reference, entretien_id=0) }}"
+         data-csrf="{{ csrf_token() }}" data-duree-max="{{ duree_max }}">
+
+    <div class="entretien-tete">
+        <div>
+            <h2>Amina, recruteuse</h2>
+            <p class="discret" id="etat">Prête quand vous l'êtes.</p>
+        </div>
+        <div class="minuteur" id="minuteur">{{ '%d:%02d' | format(duree_max // 60, duree_max % 60) }}</div>
+    </div>
+
+    {% if cle_presente %}
+        <p>Amina a lu votre CV et l'annonce. Elle va vous poser ses questions <strong>à voix haute</strong> pendant
+           <strong>5 minutes</strong> : répondez simplement en parlant, comme lors d'un vrai entretien.
+           Votre navigateur va vous demander l'accès au micro. À la fin, vous recevez une note sur 100.</p>
+        <div class="filtre-actions">
+            <button type="button" class="btn" id="demarrer">Démarrer l'entretien</button>
+            <button type="button" class="btn btn-secondaire" id="terminer" hidden>Terminer l'entretien</button>
+        </div>
+    {% else %}
+        <p class="message message-info">L'entretien vocal nécessite une clé OpenAI (OPENAI_API_KEY dans le fichier .env).</p>
+    {% endif %}
+
+    {% if sans_bilan %}
+        <p class="message message-info">Votre entretien du {{ sans_bilan.cree_le.strftime('%d/%m/%Y à %H:%M') }}
+            s'est interrompu avant le bilan.
+            <button type="button" class="lien-bouton" id="recuperer-bilan" data-id="{{ sans_bilan.id }}"
+                    data-duree="{{ sans_bilan.duree_secondes }}"><strong>Obtenir son bilan</strong></button></p>
+    {% endif %}
+    <p class="message message-danger" id="erreur" hidden></p>
+    <audio id="voix" autoplay></audio>
+
+    <ol class="transcription" id="transcription" aria-live="polite"></ol>
+</section>
+
+<section class="bloc" id="bilan" hidden></section>
+
+{% if precedents %}
+<section class="bloc">
+    <h2>Vos entretiens précédents pour ce poste</h2>
+    <ul class="annonces">
+        {% for p in precedents %}
+        <li>{{ p.date.strftime('%d/%m/%Y à %H:%M') }} · <strong>{{ p.bilan.note }} / 100</strong> · {{ p.bilan.mention }}
+            <span class="infos">{{ p.bilan.message or p.bilan.deroulement }}</span></li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+
+<script src="{{ url_for('static', filename='js/entretien.js') }}"></script>
+{% endblock %}

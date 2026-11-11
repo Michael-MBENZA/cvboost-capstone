@@ -68,6 +68,24 @@ class Analyse(db.Model):
     cree_le = db.Column(db.DateTime, default=maintenant)
 
 
+class Entretien(db.Model):
+    """Simulation d'entretien VOCAL : une recruteuse IA mène l'entretien à voix haute (5 minutes)."""
+
+    __tablename__ = "entretiens_vocaux"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    document_id = db.Column(db.Integer, db.ForeignKey("documents.id"), nullable=False)
+    offre_reference = db.Column(db.String(80), nullable=False)
+    transcription = db.Column(db.Text, default="[]")    # JSON : [{role: recruteuse|candidat, texte}, ...]
+    duree_secondes = db.Column(db.Integer, default=0)
+    bilan = db.Column(db.Text)                          # JSON : note /100, mention, déroulement, conseils
+    tokens = db.Column(db.Integer, default=0)           # tokens du bilan (le vocal est facturé à la minute)
+    cree_le = db.Column(db.DateTime, default=maintenant)
+
+    document = db.relationship("Document", backref=db.backref("entretiens", cascade="all, delete-orphan"))
+
+
 @login_manager.user_loader
 def load_user(user_id):
     # Flask-Login appelle cette fonction pour retrouver l'utilisateur de la session

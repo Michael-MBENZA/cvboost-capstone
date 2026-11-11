@@ -9,7 +9,10 @@
         <p>{{ offre.entreprise }} · {{ offre.lieu }}{% if offre.date_limite %} · jusqu'au {{ offre.date_limite | date_fr }}{% endif %}
            · <a href="{{ offre.url }}" target="_blank" rel="noopener">voir l'annonce sur {{ offre.source | nom_source }}</a></p>
     </div>
-    <a class="btn btn-secondaire" href="{{ url_for('main.offres_compatibles', doc_id=document.id) }}">Retour aux offres</a>
+    <div class="filtre-actions">
+        <a class="btn" href="{{ url_for('main.entretien', doc_id=document.id, reference=offre.reference) }}">Entretien vocal</a>
+        <a class="btn btn-secondaire" href="{{ url_for('main.offres_compatibles', doc_id=document.id) }}">Retour aux offres</a>
+    </div>
 </div>
 
 {% if not analyse %}
@@ -78,6 +81,7 @@
     <section class="bloc">
         <h2>Première question d'entretien</h2>
         <p class="question">{{ resultat.question_entretien }}</p>
+        <a class="btn espace-haut" href="{{ url_for('main.entretien', doc_id=document.id, reference=offre.reference) }}">Entretien vocal</a>
     </section>
     {% endif %}
 {% endif %}

@@ -238,3 +238,172 @@ def test_fiche_offre(client, app):
     page = client.get("/offres/OEM1").get_data(as_text=True)
     assert "Description du poste" in page and "Créez un compte" in page
     assert client.get("/offres/INCONNUE").status_code == 404
+
+
+# ---------- Entretien vocal (temps réel) ----------
+
+from app_web.models import Entretien
+
+
+def session_ok(monkeypatch):
+    """Remplace l'appel réseau à OpenAI qui ouvre la session vocale (échange SDP)."""
+    appels = []
+
+    def fausse_session(texte_cv, offre, sdp):
+        appels.append((texte_cv, offre["reference"], sdp))
+        return "v=0 reponse-sdp-openai"
+
+    monkeypatch.setattr(ia, "creer_session_vocale", fausse_session)
+    return appels
+
+
+TRANSCRIPTION = [
+    {"role": "recruteuse", "texte": "Bonjour, je suis Amina. Parlez-moi de vous."},
+    {"role": "candidat", "texte": "Je suis développeur Python depuis 3 ans à Kinshasa."},
+    {"role": "recruteuse", "texte": "Quelle API avez-vous construite récemment ?"},
+    {"role": "candidat", "texte": "Une API Flask pour gérer 2 000 dossiers clients par mois."},
+]
+
+
+def test_page_entretien_sans_cle(connecte, app):
+    doc_id = preparer(connecte, app)
+    page = connecte.get(f"/documents/{doc_id}/offres/OEM1/entretien").get_data(as_text=True)
+    assert "Entretien vocal" in page and "nécessite une clé OpenAI" in page
+
+
+def test_session_vocale_echange_sdp(connecte, app, monkeypatch):
+    doc_id = preparer(connecte, app)
+    app.config["OPENAI_API_KEY"] = "sk-test-factice"
+    appels = session_ok(monkeypatch)
+    page = connecte.get(f"/documents/{doc_id}/offres/OEM1/entretien").get_data(as_text=True)
+    assert "Démarrer l'entretien" in page
+    reponse = connecte.post(f"/documents/{doc_id}/offres/OEM1/entretien/session",
+                            json={"sdp": "v=0 offre-du-navigateur"}).get_json()
+    assert reponse["sdp"] == "v=0 reponse-sdp-openai"    # le navigateur reçoit le SDP, jamais la clé
+    assert reponse["duree_max"] == 300                    # 5 minutes
+    assert "sk-test" not in str(reponse)
+    assert "Python" in appels[0][0]                       # le CV a bien été extrait au déclenchement
+    assert appels[0][2] == "v=0 offre-du-navigateur"
+    with app.app_context():
+        assert Entretien.query.count() == 1
+
+
+def test_bilan_note_sur_100(connecte, app, monkeypatch):
+    doc_id = preparer(connecte, app)
+    app.config["OPENAI_API_KEY"] = "sk-test-factice"
+    session_ok(monkeypatch)
+    eid = connecte.post(f"/documents/{doc_id}/offres/OEM1/entretien/session").get_json()["entretien_id"]
+    monkeypatch.setattr(ia, "appeler_llm", lambda message: ({
+        "criteres": {"pertinence": {"points": 25, "justification": "a"}, "exemples": {"points": 24, "justification": "b"}, "clarte": {"points": 15, "justification": "c"}, "adequation": {"points": 14, "justification": "d"}}, "message": "Bon entretien, continuez ainsi.", "deroulement": "Entretien fluide.",
+        "points_forts": ["Exemples chiffrés"], "a_ameliorer": ["Motivation"],
+        "conseils": ["Préparez votre motivation.", "Chiffrez vos résultats."]}, 900))
+    reponse = connecte.post(f"/documents/{doc_id}/offres/OEM1/entretien/{eid}/bilan",
+                            json={"echanges": TRANSCRIPTION, "duree": 245}).get_json()
+    bilan = reponse["bilan"]
+    assert bilan["note"] == 78 and bilan["mention"] == "Très bien"
+    assert bilan["message"].startswith("Bon entretien") and len(bilan["conseils"]) == 2
+    stats = bilan["statistiques"]                       # calculées par le serveur, pas par le LLM
+    assert stats["reponses_candidat"] == 2 and stats["interventions_recruteuse"] == 2
+    assert stats["duree_secondes"] == 245 and stats["mots_prononces"] == 20
+    with app.app_context():
+        entretien = Entretien.query.one()
+        assert entretien.duree_secondes == 245 and entretien.tokens == 900
+        assert len(json.loads(entretien.transcription)) == 4
+    # La page affiche ensuite l'entretien dans l'historique
+    page = connecte.get(f"/documents/{doc_id}/offres/OEM1/entretien").get_data(as_text=True)
+    assert "78 / 100" in page
+
+
+def test_pas_de_bilan_si_aucune_reponse_entendue(connecte, app, monkeypatch):
+    doc_id = preparer(connecte, app)
+    app.config["OPENAI_API_KEY"] = "sk-test-factice"
+    session_ok(monkeypatch)
+    eid = connecte.post(f"/documents/{doc_id}/offres/OEM1/entretien/session").get_json()["entretien_id"]
+    reponse = connecte.post(f"/documents/{doc_id}/offres/OEM1/entretien/{eid}/bilan",
+                            json={"echanges": TRANSCRIPTION[:1], "duree": 30})
+    assert reponse.status_code == 400 and "micro" in reponse.get_json()["erreur"]
+
+
+def test_sauvegarde_en_cours_puis_bilan_meme_si_la_page_a_perdu_la_transcription(connecte, app, monkeypatch):
+    """Le bug de l'ancienne version : transcription vide à la fin = pas de bilan.
+    Les sauvegardes faites pendant l'entretien permettent quand même le bilan."""
+    doc_id = preparer(connecte, app)
+    app.config["OPENAI_API_KEY"] = "sk-test-factice"
+    session_ok(monkeypatch)
+    base = f"/documents/{doc_id}/offres/OEM1/entretien"
+    eid = connecte.post(base + "/session").get_json()["entretien_id"]
+
+    # Pendant l'entretien : sauvegarde sans bilan
+    r = connecte.post(f"{base}/{eid}/bilan", json={"echanges": TRANSCRIPTION, "duree": 120, "final": False})
+    assert r.get_json() == {"sauvegarde": 4}
+    with app.app_context():
+        assert Entretien.query.one().bilan is None
+
+    # La page affiche un bouton pour récupérer le bilan de cet entretien interrompu
+    assert "Obtenir son bilan" in connecte.get(base).get_data(as_text=True)
+
+    # Fin : le navigateur n'a plus rien (page rechargée), le serveur utilise la sauvegarde
+    monkeypatch.setattr(ia, "appeler_llm", lambda message: ({"criteres": {"pertinence": {"points": 20}, "exemples": {"points": 20}, "clarte": {"points": 10}, "adequation": {"points": 10}}, "message": "Correct."}, 500))
+    bilan = connecte.post(f"{base}/{eid}/bilan", json={"echanges": [], "duree": 0}).get_json()["bilan"]
+    assert bilan["note"] == 60 and bilan["statistiques"]["duree_secondes"] == 120
+
+
+def test_statistiques_entretien():
+    stats = ia.statistiques_entretien(TRANSCRIPTION, 60)
+    assert stats["reponses_candidat"] == 2
+    assert stats["mots_par_reponse"] == 10          # 20 mots en 2 réponses
+    assert stats["mots_par_minute"] == 20
+    assert 0 < stats["part_de_parole_pct"] < 100
+
+
+def test_limite_d_entretiens_par_heure(connecte, app, monkeypatch):
+    doc_id = preparer(connecte, app)
+    app.config["OPENAI_API_KEY"] = "sk-test-factice"
+    session_ok(monkeypatch)
+    for _ in range(ia.LIMITE_PAR_HEURE):
+        assert connecte.post(f"/documents/{doc_id}/offres/OEM1/entretien/session").status_code == 200
+    assert connecte.post(f"/documents/{doc_id}/offres/OEM1/entretien/session").status_code == 429
+
+
+def test_mentions():
+    assert [ia.mention(n) for n in (90, 75, 60, 45, 10)] == [
+        "Excellent", "Très bien", "Bien", "Passable", "À retravailler"]
+
+
+def test_nettoyer_transcription():
+    propre = ia.nettoyer_transcription([{"role": "candidat", "texte": " Oui "}, {"role": "pirate", "texte": "x"},
+                                        "texte", {"role": "recruteuse", "texte": ""}])
+    assert propre == [{"role": "candidat", "texte": "Oui"}]
+
+
+def test_entretien_d_un_autre_utilisateur_404(connecte, app, monkeypatch):
+    doc_id = preparer(connecte, app)
+    connecte.post("/logout")
+    connecte.post("/register", data={"username": "z", "email": "z@test.cd", "password": "secret1234", "confirm": "secret1234"})
+    connecte.post("/login", data={"email": "z@test.cd", "password": "secret1234"})
+    assert connecte.get(f"/documents/{doc_id}/offres/OEM1/entretien").status_code == 404
+    assert connecte.post(f"/documents/{doc_id}/offres/OEM1/entretien/session").status_code == 404
+
+
+def test_sdp_invalide_refuse(app):
+    import pytest as _pytest
+    app.config["OPENAI_API_KEY"] = "sk-test-factice"
+    with app.app_context():
+        with _pytest.raises(ia.EntretienRefuse):
+            ia.creer_session_vocale("cv", {"intitule": "x", "entreprise": "y", "lieu": "z", "reference": "R",
+                                           "description": "", "description_disponible": False}, "pas un sdp")
+
+
+def test_note_est_la_somme_des_criteres_bornes(app, monkeypatch):
+    """Le LLM note chaque critère ; le serveur additionne et borne (pas de note globale inventée)."""
+    monkeypatch.setattr(ia, "appeler_llm", lambda message: ({"note": 99, "criteres": {
+        "pertinence": {"points": 50, "justification": "Répond aux questions."},   # 50 > 30 : ramené à 30
+        "exemples": {"points": "12", "justification": "Un exemple chiffré."},
+        "clarte": {"points": -5},                                                 # négatif : ramené à 0
+        "adequation": {"points": 15}}}, 100))
+    with app.app_context():
+        offre = {"intitule": "Dev", "entreprise": "ACME"}
+        bilan, _ = ia.bilan_entretien(offre, TRANSCRIPTION, 60)
+    assert [c["points"] for c in bilan["criteres"]] == [30, 12, 0, 15]
+    assert bilan["note"] == 57                       # la note « 99 » du LLM est ignorée
+    assert bilan["criteres"][0]["sur"] == 30 and bilan["criteres"][0]["justification"]
