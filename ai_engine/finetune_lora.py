@@ -134,6 +134,7 @@ def main(essai):
     # ---- 1. SacreBLEU du modèle d'ORIGINE (référence) sur le jeu de test ----
     evaluateur = Seq2SeqTrainer(
         model=modele, args=arguments_entrainement(dossier, essai), processing_class=tokenizer,
+        eval_dataset=donnees_tok["test"],  # exigé par Trainer quand eval_strategy="epoch"
         data_collator=DataCollatorForSeq2Seq(tokenizer, model=modele),
         compute_metrics=creer_calcul_bleu(tokenizer),
     )
