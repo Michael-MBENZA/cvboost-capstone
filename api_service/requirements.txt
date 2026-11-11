@@ -1,0 +1,11 @@
+# Dependances de l API /speak-smart (Sprint 4), en plus de celles du site (requirements.txt)
+# torch 2.8 : derniere version ou torchaudio lit l audio sans torchcodec ni FFmpeg (requis par Coqui TTS)
+fastapi==0.162.0
+uvicorn==0.54.0
+openai==3.46.0
+python-dotenv==1.2.4
+torch==2.8.0
+torchaudio==2.8.0
+coqui-tts==0.28.0
+transformers==5.22.1
+six==1.17.0
