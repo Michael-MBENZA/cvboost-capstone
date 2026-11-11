@@ -259,19 +259,22 @@
     }
 
     function afficherBilan(b) {
-        var niveau = b.note >= 70 ? "haut" : (b.note >= 40 ? "moyen" : "bas");
+        var notee = typeof b.note === "number";   // null : entretien trop court pour être noté
+        var niveau = !notee ? "non-note" : (b.note >= 70 ? "haut" : (b.note >= 40 ? "moyen" : "bas"));
         zoneBilan.innerHTML = "";
 
         // Note, mention et message bref
         var grille = element("div", null, "synthese");
         var jauge = element("div", null, "jauge " + niveau);
-        jauge.appendChild(element("strong", b.note + " / 100"));
-        jauge.appendChild(document.createTextNode(b.mention || ""));
-        var barre = element("div", null, "barre");
-        var rempli = element("span");
-        rempli.style.width = b.note + "%";
-        barre.appendChild(rempli);
-        jauge.appendChild(barre);
+        jauge.appendChild(element("strong", notee ? b.note + " / 100" : "Non noté"));
+        if (notee) {
+            jauge.appendChild(document.createTextNode(b.mention || ""));
+            var barre = element("div", null, "barre");
+            var rempli = element("span");
+            rempli.style.width = b.note + "%";
+            barre.appendChild(rempli);
+            jauge.appendChild(barre);
+        }
 
         var texte = element("div");
         texte.appendChild(element("h2", "Bilan de l'entretien"));
@@ -287,16 +290,19 @@
             zoneBilan.appendChild(element("p", "Détail de la note", "sous-titre"));
             var detail = element("ul", null, "criteres");
             b.criteres.forEach(function (c) {
-                var li = element("li");
+                var evalue = c.evalue !== false && typeof c.points === "number";  // anciens bilans : toujours évalués
+                var li = element("li", null, evalue ? "" : "non-evalue");
                 var tete = element("div", null, "critere-tete");
                 tete.appendChild(element("span", c.critere));
-                tete.appendChild(element("strong", c.points + " / " + c.sur));
+                tete.appendChild(element("strong", evalue ? c.points + " / " + c.sur : "non évalué"));
                 li.appendChild(tete);
-                var barreC = element("div", null, "barre");
-                var remplie = element("span");
-                remplie.style.width = Math.round(100 * c.points / c.sur) + "%";
-                barreC.appendChild(remplie);
-                li.appendChild(barreC);
+                if (evalue) {
+                    var barreC = element("div", null, "barre");
+                    var remplie = element("span");
+                    remplie.style.width = Math.round(100 * c.points / c.sur) + "%";
+                    barreC.appendChild(remplie);
+                    li.appendChild(barreC);
+                }
                 if (c.justification) li.appendChild(element("p", c.justification, "discret"));
                 detail.appendChild(li);
             });

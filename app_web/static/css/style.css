@@ -235,6 +235,8 @@ td.action { text-align: right; }
 .critere-tete { display: flex; justify-content: space-between; gap: .5rem; color: var(--encre); }
 .criteres .barre { height: 6px; background: #e8ebef; border-radius: 3px; margin-top: .3rem; overflow: hidden; }
 .criteres .barre span { display: block; height: 100%; background: var(--petrole); }
+.criteres .non-evalue strong { color: var(--discret); font-weight: 500; font-style: italic; }
+.jauge.non-note strong { font-size: 1.4rem; color: var(--discret); }
 .message-bref { font-size: 1.05rem; color: var(--encre); font-weight: 500; }
 
 /* ---------- Catalogue des offres ---------- */

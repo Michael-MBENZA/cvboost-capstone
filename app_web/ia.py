@@ -4,8 +4,7 @@ Deux services :
   1. classer_offres()  : compare UN CV à TOUTES les offres scrapées -> score (%) + raison pour chacune
                          (un seul appel à OpenAI pour toutes les offres)
   2. analyser_offre()  : analyse détaillée CV / une offre -> résumé du profil, score, points forts,
-                         compétences manquantes, suggestions honnêtes pour améliorer le CV,
-                         première question d'entretien
+                         compétences manquantes, suggestions honnêtes pour améliorer le CV
 
 Sans clé OPENAI_API_KEY (ou dans les tests), un MODE DÉMO calcule un score simple par
 mots-clés communs : l'application reste utilisable gratuitement, et la page indique
@@ -25,7 +24,7 @@ from flask import current_app
 from . import db
 from .models import Analyse
 
-PROMPT_VERSION = "v2"  # à incrémenter dès qu'on modifie un prompt : l'ancien cache est alors ignoré
+PROMPT_VERSION = "v3"  # à incrémenter dès qu'on modifie un prompt : l'ancien cache est alors ignoré
 TAILLE_DESCRIPTION_CLASSEMENT = 700   # caractères par offre envoyés pour le classement
 TAILLE_DESCRIPTION_DETAIL = 6000      # caractères envoyés pour l'analyse détaillée
 
@@ -199,8 +198,7 @@ def analyser_offre(texte_cv, offre):
         "Format attendu :\n"
         '{"resume_profil": "3 phrases maximum", "score": 0, '
         '"points_forts": ["..."], "competences_manquantes": ["..."], '
-        '"suggestions_cv": [{"section": "ex : Expérience", "conseil": "..."}], '
-        '"question_entretien": "une première question de recruteur adaptée à cette offre"}\n\n'
+        '"suggestions_cv": [{"section": "ex : Expérience", "conseil": "..."}]}\n\n'
         f"=== CV ===\n{texte_cv}\n\n"
         f"=== OFFRE [{offre['reference']}] ===\n{offre['intitule']} — {offre['entreprise']} "
         f"({offre['lieu']})\n{description}"
@@ -225,7 +223,6 @@ def valider_analyse(donnees):
         "points_forts": liste_de_textes(donnees.get("points_forts")),
         "competences_manquantes": liste_de_textes(donnees.get("competences_manquantes")),
         "suggestions_cv": suggestions[:6],
-        "question_entretien": str(donnees.get("question_entretien", "")).strip()[:500],
     }
 
 
@@ -272,8 +269,6 @@ def analyse_demo(texte_cv, offre):
         "suggestions_cv": [{"section": "Compétences",
                             "conseil": f"Si vous maîtrisez « {c} », mentionnez-le explicitement."}
                            for c in manquantes[:3]],
-        "question_entretien": f"Pourquoi souhaitez-vous rejoindre {offre['entreprise']} "
-                              f"comme {offre['intitule']} ?",
     }
 
 
@@ -324,7 +319,12 @@ MODELE_ASSISTANT = os.getenv("OPENAI_MODELE_ASSISTANT", "gpt-5.6-terra")  # réf
 VOIX = os.getenv("VOIX_ENTRETIEN", "")  # vide = voix par défaut du modèle (celle de l'ancienne version)
 DUREE_MAX_SECONDES = 5 * 60
 LIMITE_PAR_HEURE = 6                    # entretiens par utilisateur et par heure (chaque minute coûte)
-MIN_REPONSES_BILAN = 1
+MIN_REPONSES_BILAN = 1                  # en dessous : pas de bilan du tout (rien n'a été entendu)
+# Pour recevoir une NOTE, l'entretien doit être assez long : on ne juge pas quelqu'un sur une présentation.
+# En dessous, le bilan donne un retour et des conseils, mais « Non noté ».
+MIN_REPONSES_NOTE = 3                   # au moins 3 réponses du candidat...
+MIN_DUREE_NOTE = 120                    # ... ou au moins 2 minutes d'échange
+MIN_CRITERES_EVALUES = 2                # une note calculée sur un seul critère ne voudrait rien dire
 
 CONSIGNE_RECRUTEUSE = """Tu es Amina, recruteuse RH bienveillante mais exigeante, à Kinshasa (RD Congo).
 Tu mènes à voix haute un entretien de simulation d'environ 5 minutes, en français.
@@ -378,13 +378,22 @@ Repères mesurés : {statistiques}
 - adequation (sur 20) : le parcours et les compétences citées correspondent-ils au poste visé ?
 Pour chaque critère, donne un nombre entier précis (pas seulement des multiples de 5), utilise toute l'échelle (0 = absent, maximum = excellent) et justifie en UNE phrase
 qui s'appuie sur ce que le candidat a réellement dit. Une réponse vague, hors sujet ou très courte
-fait baisser le critère concerné. Ignore les petites erreurs de reconnaissance vocale.
+fait baisser le critère concerné.
+CRITÈRE NON ÉVALUABLE : si l'entretien n'a pas permis d'en juger (par exemple, aucune question ne
+demandait d'exemple, ou le poste n'a pas encore été abordé), mets "evalue": false et "points": null,
+avec une justification qui explique pourquoi. Ne pénalise JAMAIS le candidat pour une question
+qui ne lui a pas été posée.
+TRANSCRIPTION AUTOMATIQUE : le texte vient d'une reconnaissance vocale qui fait des erreurs, surtout
+sur les noms propres, les sigles et les mots rares (un nom peut devenir des mots sans rapport). Un
+passage incompréhensible ou absurde est très probablement une erreur de transcription : ne le
+compte ni comme une réponse confuse ni comme un manque de clarté, et ne le cite pas. Juge la clarté
+sur la structure et la longueur des réponses, pas sur l'orthographe ou les mots mal reconnus.
 Dans les points forts et les points à améliorer, cite entre guillemets de courts extraits des réponses
 du candidat. Adresse-toi directement au candidat avec « vous » dans TOUTES les phrases (jamais « le candidat » ni « il »). Réponds en français, uniquement avec un objet JSON :
-{{"criteres": {{"pertinence": {{"points": 0, "justification": "..."}},
-               "exemples": {{"points": 0, "justification": "..."}},
-               "clarte": {{"points": 0, "justification": "..."}},
-               "adequation": {{"points": 0, "justification": "..."}}}},
+{{"criteres": {{"pertinence": {{"evalue": true, "points": 0, "justification": "..."}},
+               "exemples": {{"evalue": true, "points": 0, "justification": "..."}},
+               "clarte": {{"evalue": true, "points": 0, "justification": "..."}},
+               "adequation": {{"evalue": true, "points": 0, "justification": "..."}}}},
 "message": "une phrase brève qui résume l'entretien",
 "deroulement": "rapport de 3 à 4 phrases : comment s'est passé l'entretien",
 "points_forts": ["..."],
@@ -486,9 +495,31 @@ def statistiques_entretien(echanges, duree_secondes):
     }
 
 
+def entretien_assez_long(stats):
+    """Assez d'échanges pour juger le candidat ? (sinon : bilan « Non noté »)"""
+    return stats["reponses_candidat"] >= MIN_REPONSES_NOTE or stats["duree_secondes"] >= MIN_DUREE_NOTE
+
+
+def lire_critere(detail, maximum):
+    """Un critère renvoyé par le LLM -> (évalué ?, points bornés ou None)."""
+    if detail.get("evalue") is False or detail.get("points") is None:
+        return False, None
+    try:
+        points = int(round(float(detail.get("points"))))
+    except (TypeError, ValueError):
+        return False, None
+    return True, max(0, min(points, maximum))
+
+
 def bilan_entretien(offre, echanges, duree_secondes):
-    """Bilan noté sur 100 à partir de la transcription. Renvoie (bilan, tokens)."""
+    """Bilan de l'entretien à partir de la transcription. Renvoie (bilan, tokens).
+
+    La note sur 100 est calculée ICI, jamais par le LLM : c'est la somme des points des critères
+    évalués, ramenée sur 100 (un critère que l'entretien n'a pas permis d'observer ne compte pas).
+    Pas de note (None, « Non noté ») si l'entretien est trop court ou si moins de 2 critères
+    ont pu être évalués."""
     stats = statistiques_entretien(echanges, duree_secondes)
+    assez_long = entretien_assez_long(stats)
     transcription = "\n".join(
         f"{'Recruteuse' if e['role'] == 'recruteuse' else 'Candidat'} : {e['texte']}" for e in echanges
     )
@@ -498,7 +529,10 @@ def bilan_entretien(offre, echanges, duree_secondes):
         duree=f"{minutes} min {secondes:02d} s", transcription=transcription[-20000:],
         statistiques=(f"{stats['reponses_candidat']} réponses, {stats['mots_prononces']} mots prononcés par le "
                       f"candidat, {stats['mots_par_reponse']} mots par réponse en moyenne, "
-                      f"{stats['part_de_parole_pct']} % du temps de parole"),
+                      f"{stats['part_de_parole_pct']} % du temps de parole"
+                      + ("" if assez_long else
+                         ". ENTRETIEN TROP COURT POUR ÊTRE NOTÉ : ne parle pas de note, donne seulement "
+                         "un retour bienveillant sur ce qui a été dit et des conseils")),
     )
     donnees, tokens = appeler_llm(message)
     donnees = donnees if isinstance(donnees, dict) else {}
@@ -506,20 +540,33 @@ def bilan_entretien(offre, echanges, duree_secondes):
     criteres = []
     for cle, (libelle, maximum) in CRITERES.items():
         detail = brut.get(cle) if isinstance(brut.get(cle), dict) else {}
-        try:
-            points = int(round(float(detail.get("points", 0))))
-        except (TypeError, ValueError):
-            points = 0
+        evalue, points = lire_critere(detail, maximum)
         criteres.append({
-            "critere": libelle, "points": max(0, min(points, maximum)), "sur": maximum,
+            "critere": libelle, "evalue": evalue, "points": points, "sur": maximum,
             "justification": str(detail.get("justification", "")).strip()[:300],
         })
-    note = sum(c["points"] for c in criteres)  # la note est la SOMME des critères, calculée ici
+    evalues = [c for c in criteres if c["evalue"]]
+    if assez_long and len(evalues) >= MIN_CRITERES_EVALUES:
+        # Somme des critères évalués, ramenée sur 100 : un critère non abordé ne pénalise pas
+        note = round(100 * sum(c["points"] for c in evalues) / sum(c["sur"] for c in evalues))
+        mention_note = mention(note)
+    else:
+        note, mention_note = None, "Non noté"
+    if not assez_long:
+        criteres = []   # trop court : un détail de note n'aurait pas de sens
+    message = str(donnees.get("message", "")).strip()[:300]
+    if note is None:
+        raison = (f"Entretien trop court pour être noté ({stats['reponses_candidat']} réponse"
+                  f"{'s' if stats['reponses_candidat'] > 1 else ''} en {minutes} min {secondes:02d} s ; "
+                  f"il faut au moins {MIN_REPONSES_NOTE} réponses ou {MIN_DUREE_NOTE // 60} minutes)."
+                  if not assez_long else
+                  "Pas assez d'éléments pour une note : la plupart des critères n'ont pas pu être observés.")
+        message = f"{raison} {message}".strip()
     return {
         "note": note,
-        "mention": mention(note),
+        "mention": mention_note,
         "criteres": criteres,
-        "message": str(donnees.get("message", "")).strip()[:300],
+        "message": message,
         "deroulement": str(donnees.get("deroulement", "")).strip()[:1200],
         "points_forts": liste_de_textes(donnees.get("points_forts"), 4),
         "a_ameliorer": liste_de_textes(donnees.get("a_ameliorer"), 4),

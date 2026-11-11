@@ -53,7 +53,7 @@
     <h2>Vos entretiens précédents pour ce poste</h2>
     <ul class="annonces">
         {% for p in precedents %}
-        <li>{{ p.date.strftime('%d/%m/%Y à %H:%M') }} · <strong>{{ p.bilan.note }} / 100</strong> · {{ p.bilan.mention }}
+        <li>{{ p.date.strftime('%d/%m/%Y à %H:%M') }} · {% if p.bilan.note is not none %}<strong>{{ p.bilan.note }} / 100</strong> · {{ p.bilan.mention }}{% else %}<strong>Non noté</strong>{% endif %}
             <span class="infos">{{ p.bilan.message or p.bilan.deroulement }}</span></li>
         {% endfor %}
     </ul>

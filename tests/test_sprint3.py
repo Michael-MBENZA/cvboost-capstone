@@ -147,7 +147,8 @@ def test_analyse_detaillee_demo(connecte, app):
     doc_id = preparer(connecte, app)
     connecte.post(f"/documents/{doc_id}/offres/OEM1")
     page = connecte.get(f"/documents/{doc_id}/offres/OEM1").get_data(as_text=True)
-    assert "Points forts" in page and "Première question d'entretien" in page
+    assert "Points forts" in page
+    assert "Première question d'entretien" not in page  # retirée à la demande de l'utilisateur
     with app.app_context():
         analyse = Analyse.query.filter_by(type="detail").one()
         assert analyse.mode == "demo" and analyse.offre_reference == "OEM1"
@@ -212,6 +213,7 @@ def test_valider_analyse_resiste_a_une_reponse_bizarre():
     assert propre["points_forts"] == []
     assert propre["suggestions_cv"] == [{"section": "Expérience", "conseil": "Chiffrez vos résultats."}]
     assert propre["resume_profil"] == ""
+    assert "question_entretien" not in propre  # un champ en trop envoyé par le LLM est ignoré
 
 
 def test_empreinte_change_si_le_cv_change(app):
@@ -403,7 +405,83 @@ def test_note_est_la_somme_des_criteres_bornes(app, monkeypatch):
         "adequation": {"points": 15}}}, 100))
     with app.app_context():
         offre = {"intitule": "Dev", "entreprise": "ACME"}
-        bilan, _ = ia.bilan_entretien(offre, TRANSCRIPTION, 60)
+        bilan, _ = ia.bilan_entretien(offre, TRANSCRIPTION, 180)
     assert [c["points"] for c in bilan["criteres"]] == [30, 12, 0, 15]
     assert bilan["note"] == 57                       # la note « 99 » du LLM est ignorée
     assert bilan["criteres"][0]["sur"] == 30 and bilan["criteres"][0]["justification"]
+
+
+def faux_bilan(monkeypatch, criteres, envoye=None):
+    def faux(message):
+        if envoye is not None:
+            envoye.append(message)
+        return {"criteres": criteres, "message": "Merci pour cet échange.", "deroulement": "Bref échange.",
+                "points_forts": [], "a_ameliorer": [], "conseils": ["Développez vos réponses."]}, 300
+    monkeypatch.setattr(ia, "appeler_llm", faux)
+
+
+TOUS_EVALUES = {"pertinence": {"points": 20}, "exemples": {"points": 20},
+                "clarte": {"points": 10}, "adequation": {"points": 10}}
+
+
+def test_entretien_trop_court_non_note(app, monkeypatch):
+    """Le cas réel : une simple présentation (1 réponse, 36 s) avait reçu 25/100."""
+    envoye = []
+    faux_bilan(monkeypatch, TOUS_EVALUES, envoye)
+    with app.app_context():
+        bilan, _ = ia.bilan_entretien({"intitule": "Dev", "entreprise": "ACME"}, TRANSCRIPTION[:2], 36)
+    assert bilan["note"] is None and bilan["mention"] == "Non noté"
+    assert bilan["criteres"] == []                       # pas de détail de note
+    assert bilan["message"].startswith("Entretien trop court pour être noté (1 réponse en 0 min 36 s")
+    assert bilan["conseils"] == ["Développez vos réponses."]   # le retour et les conseils restent
+    assert "TROP COURT" in envoye[0]                     # le LLM est prévenu de ne pas parler de note
+
+
+def test_assez_long_avec_3_reponses_ou_2_minutes():
+    trois = {"reponses_candidat": 3, "duree_secondes": 50}
+    longue = {"reponses_candidat": 1, "duree_secondes": 120}
+    courte = {"reponses_candidat": 2, "duree_secondes": 119}
+    assert ia.entretien_assez_long(trois) and ia.entretien_assez_long(longue)
+    assert not ia.entretien_assez_long(courte)
+
+
+def test_critere_non_evalue_ne_penalise_pas(app, monkeypatch):
+    """Aucune question sur le poste : « adéquation » non évaluée -> note sur les 3 autres critères."""
+    faux_bilan(monkeypatch, {"pertinence": {"points": 24}, "exemples": {"points": 21},
+                             "clarte": {"points": 16},
+                             "adequation": {"evalue": False, "points": None, "justification": "Poste non abordé."}})
+    with app.app_context():
+        bilan, _ = ia.bilan_entretien({"intitule": "Dev", "entreprise": "ACME"}, TRANSCRIPTION, 180)
+    assert bilan["note"] == 76                           # (24 + 21 + 16) / 80 = 76 %, et non 61 / 100
+    adequation = bilan["criteres"][3]
+    assert adequation["evalue"] is False and adequation["points"] is None
+    assert adequation["justification"] == "Poste non abordé."
+
+
+def test_moins_de_2_criteres_evalues_non_note(app, monkeypatch):
+    faux_bilan(monkeypatch, {"clarte": {"points": 15}, "pertinence": {"evalue": False},
+                             "exemples": {"points": None}, "adequation": {"points": "?"}})
+    with app.app_context():
+        bilan, _ = ia.bilan_entretien({"intitule": "Dev", "entreprise": "ACME"}, TRANSCRIPTION, 180)
+    assert bilan["note"] is None and bilan["mention"] == "Non noté"
+    assert len(bilan["criteres"]) == 4                   # le détail reste visible (non évalués)
+    assert bilan["message"].startswith("Pas assez d'éléments pour une note")
+
+
+def test_le_llm_est_prevenu_des_erreurs_de_transcription():
+    consigne = ia.CONSIGNE_BILAN
+    assert "TRANSCRIPTION AUTOMATIQUE" in consigne and "noms propres" in consigne
+    assert '"evalue": false' in consigne and "question\nqui ne lui a pas été posée" in consigne
+
+
+def test_historique_affiche_non_note(connecte, app, monkeypatch):
+    doc_id = preparer(connecte, app)
+    app.config["OPENAI_API_KEY"] = "sk-test-factice"
+    session_ok(monkeypatch)
+    eid = connecte.post(f"/documents/{doc_id}/offres/OEM1/entretien/session").get_json()["entretien_id"]
+    faux_bilan(monkeypatch, TOUS_EVALUES)
+    bilan = connecte.post(f"/documents/{doc_id}/offres/OEM1/entretien/{eid}/bilan",
+                          json={"echanges": TRANSCRIPTION[:2], "duree": 36}).get_json()["bilan"]
+    assert bilan["note"] is None
+    page = connecte.get(f"/documents/{doc_id}/offres/OEM1/entretien").get_data(as_text=True)
+    assert "Non noté" in page and "None / 100" not in page
