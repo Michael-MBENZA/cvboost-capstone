@@ -4,7 +4,8 @@
 //  2. Le site la transmet à OpenAI avec la consigne de la recruteuse (la clé reste sur le serveur)
 //     et renvoie la réponse SDP : la connexion audio s'établit directement avec OpenAI.
 //  3. La transcription arrive par petits morceaux sur un canal de données ; on les assemble en répliques
-//     et on les sauvegarde sur le serveur toutes les 20 secondes.
+//     et on les sauvegarde sur le serveur toutes les 20 secondes. Elle n'est PAS affichée à l'écran
+//     (comme dans un vrai entretien, on écoute sans lire) : elle sert seulement au bilan.
 //  4. À 5 minutes (ou au clic sur « Terminer »), on coupe et on demande le bilan noté au site.
 (function () {
     "use strict";
@@ -17,7 +18,6 @@
     var boutonRecuperer = document.getElementById("recuperer-bilan");
     var etatTexte = document.getElementById("etat");
     var minuteur = document.getElementById("minuteur");
-    var liste = document.getElementById("transcription");
     var zoneErreur = document.getElementById("erreur");
     var zoneBilan = document.getElementById("bilan");
     var voix = document.getElementById("voix");
@@ -27,7 +27,7 @@
     var connexion = null, micro = null, canal = null, chrono = null;
     var entretienId = null, secondes = 0, consigneOuverture = null;
     var echanges = [];             // [{ role: "recruteuse" | "candidat", texte }]
-    var repliqueEnCours = null;    // { role, texte, span } : la phrase en train d'être prononcée
+    var repliqueEnCours = null;    // { role, texte } : la phrase en train d'être prononcée
 
     // ---------- Outils ----------
 
@@ -78,19 +78,11 @@
     function ajouterMorceau(role, morceau) {
         if (!morceau) return;
         if (!repliqueEnCours || repliqueEnCours.role !== role) {
-            var li = element("li", null, role === "recruteuse" ? "replique-recruteuse" : "replique-candidat");
-            li.appendChild(element("span", role === "recruteuse" ? "Amina" : "Vous", "discret"));
-            li.appendChild(document.createElement("br"));
-            var span = element("span", "");
-            li.appendChild(span);
-            liste.appendChild(li);
-            repliqueEnCours = { role: role, texte: "", span: span };
+            repliqueEnCours = { role: role, texte: "" };
             echanges.push({ role: role, texte: "" });
         }
         repliqueEnCours.texte += morceau;
-        repliqueEnCours.span.textContent = repliqueEnCours.texte.trim();
         echanges[echanges.length - 1].texte = repliqueEnCours.texte.trim();
-        repliqueEnCours.span.parentNode.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
 
     function recevoir(message) {
@@ -166,7 +158,6 @@
     function demarrer() {
         afficherErreur("");
         zoneBilan.hidden = true;
-        liste.innerHTML = "";
         echanges = [];
         repliqueEnCours = null;
         secondes = 0;

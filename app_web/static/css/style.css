@@ -1,5 +1,8 @@
 /* CVBoost : feuille de style principale */
 
+/* L'attribut hidden doit toujours cacher l'élément, même si une classe (.btn...) lui donne un display */
+[hidden] { display: none !important; }
+
 :root {
     --encre: #1b1f24;
     --texte: #2f353d;
@@ -219,16 +222,11 @@ td.action { text-align: right; }
 .liste li { margin-bottom: .4rem; }
 .conseils { margin: 0; padding-left: 1.2rem; }
 .conseils li { margin-bottom: .6rem; }
-.question { margin: 0; padding: .75rem 1rem; border-left: 3px solid var(--petrole); background: var(--fond); color: var(--encre); }
 
 /* ---------- Entretien vocal ---------- */
 .entretien-tete { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: .75rem; }
 .entretien-tete p { margin: 0; }
 .minuteur { font-size: 1.8rem; font-weight: 600; color: var(--encre); font-variant-numeric: tabular-nums; }
-.transcription { list-style: none; padding: 0; margin: 1.25rem 0 0; max-height: 420px; overflow-y: auto; }
-.transcription li { padding: .6rem .8rem; margin-bottom: .5rem; border-radius: 4px; }
-.replique-recruteuse { background: var(--petrole-pale); border-left: 3px solid var(--petrole); }
-.replique-candidat { background: var(--fond); margin-left: 2rem; }
 .sous-titre { margin: 1rem 0 .3rem; font-weight: 600; color: var(--encre); }
 #bilan { margin-top: 1.25rem; }
 .criteres { list-style: none; padding: 0; margin: 0 0 1.25rem; display: grid;
