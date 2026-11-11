@@ -1,0 +1,68 @@
+# CVBoost : 3 services isolés qui communiquent par un réseau interne
+#   Lancer   : docker compose up --build
+#   Arrêter  : docker compose down        (les données sont conservées dans les volumes)
+
+# Nom du projet : conteneurs « cvboost-web-1 »... au lieu du (très long) nom du dossier
+name: cvboost
+
+services:
+
+  # ---------- Base de données PostgreSQL ----------
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cvboost
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manque dans .env}
+      POSTGRES_DB: cvboost
+    volumes:
+      - donnees_db:/var/lib/postgresql/data     # la base survit à l'arrêt des conteneurs
+    healthcheck:                                 # « prête » seulement quand elle accepte les connexions
+      test: ["CMD-SHELL", "pg_isready -U cvboost -d cvboost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    # Pas de « ports » : la base n'est PAS accessible depuis l'extérieur, seulement par le site
+
+  # ---------- Site web Flask (Gunicorn) ----------
+  web:
+    build:
+      context: .
+      target: web
+    image: cvboost-web
+    env_file: .env                               # SECRET_KEY, OPENAI_API_KEY...
+    environment:
+      # « db » = nom du service ci-dessus : Docker le transforme en adresse sur le réseau interne
+      DATABASE_URL: postgresql+psycopg://cvboost:${POSTGRES_PASSWORD}@db:5432/cvboost
+    ports:
+      - "5000:5000"
+    volumes:
+      - cv_deposes:/app/uploads                  # les CV survivent à l'arrêt des conteneurs
+      - journaux:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy               # attend que PostgreSQL soit vraiment prêt
+    restart: unless-stopped
+
+  # ---------- API /speak-smart (FastAPI + voix VITS) ----------
+  api:
+    build:
+      context: .
+      target: api
+    image: cvboost-api
+    env_file: .env                               # OPENAI_API_KEY, API_PITCH_CLE
+    ports:
+      - "8000:8000"
+    healthcheck:                                 # interroge /health toutes les 30 s
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s                          # le temps de charger la voix au démarrage
+      retries: 3
+    restart: unless-stopped
+
+# Volumes : espaces de stockage gérés par Docker, indépendants des conteneurs
+volumes:
+  donnees_db:
+  cv_deposes:
+  journaux:
