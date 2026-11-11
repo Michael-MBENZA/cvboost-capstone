@@ -36,7 +36,7 @@
         {% if current_user.is_authenticated %}
             {% if dernier_cv %}
                 <a class="btn btn-secondaire btn-large espace-haut" href="{{ url_for('main.analyse_offre', doc_id=dernier_cv.id, reference=offre.reference) }}">Comparer avec mon CV</a>
-                <a class="btn btn-secondaire btn-large espace-haut" href="{{ url_for('main.entretien', doc_id=dernier_cv.id, reference=offre.reference) }}">Entretien vocal</a>
+                <a class="btn btn-secondaire btn-large espace-haut" href="{{ url_for('main.entretien', doc_id=dernier_cv.id, reference=offre.reference) }}">Simulation d'entretien</a>
             {% else %}
                 <p class="discret espace-haut"><a href="{{ url_for('main.upload') }}">Déposez un CV</a> pour le comparer à cette offre.</p>
             {% endif %}

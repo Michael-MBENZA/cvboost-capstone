@@ -10,7 +10,7 @@
            · <a href="{{ offre.url }}" target="_blank" rel="noopener">voir l'annonce sur {{ offre.source | nom_source }}</a></p>
     </div>
     <div class="filtre-actions">
-        <a class="btn" href="{{ url_for('main.entretien', doc_id=document.id, reference=offre.reference) }}">Entretien vocal</a>
+        <a class="btn" href="{{ url_for('main.entretien', doc_id=document.id, reference=offre.reference) }}">Simulation d'entretien</a>
         <a class="btn btn-secondaire" href="{{ url_for('main.offres_compatibles', doc_id=document.id) }}">Retour aux offres</a>
     </div>
 </div>
@@ -19,7 +19,7 @@
     <section class="bloc lancement">
         <h2>Analyse détaillée de votre candidature</h2>
         <p>Résumé de votre profil, compatibilité avec ce poste, points forts, manques, conseils pour
-           adapter votre CV et première question d'entretien.</p>
+           adapter votre CV.</p>
         {% if mode == "demo" %}<p><strong>Mode démo</strong> : aucune clé OpenAI n'est configurée.</p>{% endif %}
         <form method="POST" class="js-chargement">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -75,14 +75,5 @@
                 {% endfor %}
             </ol>
         {% else %}<p class="discret">Pas de conseil particulier.</p>{% endif %}
-    </section>
-
-    {% if resultat.question_entretien %}
-    <section class="bloc">
-        <h2>Première question d'entretien</h2>
-        <p class="question">{{ resultat.question_entretien }}</p>
-        <a class="btn espace-haut" href="{{ url_for('main.entretien', doc_id=document.id, reference=offre.reference) }}">Entretien vocal</a>
-    </section>
-    {% endif %}
-{% endif %}
+    </section>{% endif %}
 {% endblock %}
