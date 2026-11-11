@@ -1,0 +1,27 @@
+# Environnement virtuel et secrets : jamais dans une image
+env/
+.env
+
+# Git, éditeurs, notes personnelles
+.git/
+.vscode/
+.claude/
+docs/
+
+# Caches Python et tests (**/ = dans tous les sous-dossiers)
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+
+# Données locales (bases, CV déposés, journaux, audio)
+database/*.db
+uploads/*
+!uploads/.gitkeep
+logs/
+api_service/temp_audio/*
+**/*.wav
+
+# Gros fichiers du fine-tuning, inutiles pour faire tourner le site ou l'API
+ai_engine/data/*.jsonl
+ai_engine/modele_lora/checkpoints/
+ai_engine/modele_lora_essai/
