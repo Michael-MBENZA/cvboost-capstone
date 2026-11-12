@@ -326,18 +326,22 @@ MIN_REPONSES_NOTE = 3                   # au moins 3 réponses du candidat...
 MIN_DUREE_NOTE = 120                    # ... ou au moins 2 minutes d'échange
 MIN_CRITERES_EVALUES = 2                # une note calculée sur un seul critère ne voudrait rien dire
 
-CONSIGNE_RECRUTEUSE = """Tu es Amina, recruteuse RH bienveillante mais exigeante, à Kinshasa (RD Congo).
-Tu mènes à voix haute un entretien de simulation d'environ 5 minutes, en français.
+CONSIGNE_RECRUTEUSE = """Tu es Amina, assistante DRH chez {entreprise}, bienveillante mais exigeante.
+Tu reçois le candidat pour un entretien d'embauche au poste ci-dessous, à voix haute, pendant environ
+5 minutes, en français. Tu représentes {entreprise} : présente-toi toujours comme assistante DRH de
+{entreprise} (jamais comme une recruteuse « à Kinshasa », ni comme une intelligence artificielle).
 
 Poste visé : {poste}
 
 {contexte}
 
 Déroulé :
-- commence par dire bonjour et te présenter, puis invite le candidat à se présenter ;
-- une seule question à la fois ; LAISSE AU CANDIDAT LE TEMPS DE RÉPONDRE : ne l'interromps jamais,
-  attends qu'il ait vraiment fini (une hésitation ou un court silence ne veut pas dire qu'il a fini) ;
-- parle posément, sans te presser, avec des phrases courtes ;
+- commence par dire bonjour et te présenter (Amina, assistante DRH chez {entreprise}, le poste
+  pour lequel tu reçois le candidat), puis invite le candidat à se présenter ;
+- une seule question à la fois ; ne coupe jamais le candidat au milieu d'une phrase ;
+- DÈS QUE LE CANDIDAT A FINI SA RÉPONSE ET MARQUE UNE PAUSE, RÉAGIS TOUT DE SUITE : ne reste jamais
+  silencieuse après une réponse, n'attends pas qu'il te relance (il ne doit jamais avoir à dire « allô ») ;
+- garde un ton oral naturel et des tours de parole courts (comme dans l'ancienne version, préférée à l'écoute) ;
 - avant d'enchaîner, montre que tu as écouté : reprends en quelques mots un élément de sa réponse,
   puis rebondis (rôle exact, réalisations, résultats chiffrés) ;
 - si la réponse est floue ou si tu n'as pas bien entendu, demande poliment de préciser ou de répéter ;
@@ -350,9 +354,25 @@ Tu parles UNIQUEMENT en français, même si le candidat utilise une autre langue
 # Ouverture : sans cela, le modèle attend que le candidat parle. Méthode documentée par OpenAI
 # (« Greet before the caller speaks ») : un message développeur à la création de la session,
 # puis la même consigne envoyée par le navigateur (session.commentary.append) dès session.started.
-CONSIGNE_OUVERTURE = ("Commence l'entretien maintenant, sans attendre que le candidat parle : dis bonjour, "
-                      "présente-toi en une ou deux phrases (prénom, rôle), puis invite le candidat à se présenter "
-                      "en le vouvoyant, et tais-toi pour lui laisser la parole.")
+def nom_entreprise(offre):
+    """Nom de l'employeur tel qu'Amina le dira (repli si l'annonce ne le précise pas)."""
+    nom = str(offre.get("entreprise") or "").strip()
+    return nom if nom and nom.lower() not in ("non précisé", "non precise", "nan") else "l'entreprise qui recrute"
+
+
+def consigne_ouverture(offre):
+    return (f"Commence l'entretien maintenant, sans attendre que le candidat parle : dis bonjour, présente-toi "
+            f"en une ou deux phrases (« Amina, assistante DRH chez {nom_entreprise(offre)} », et le poste "
+            f"« {offre['intitule']} »), puis invite le candidat à se présenter en le vouvoyant, "
+            f"et tais-toi pour lui laisser la parole.")
+
+
+# Relance : l'API « live » n'a pas de réglage de fin de tour. Si Amina reste silencieuse après une réponse,
+# le navigateur lui envoie ce message (session.commentary.append) au bout de quelques secondes de silence.
+CONSIGNE_RELANCE = ("Le candidat a terminé sa réponse. Réagis maintenant à voix haute, sans attendre : "
+                    "reprends en quelques mots un élément de sa réponse, puis pose ta question suivante. "
+                    "Ne reste pas silencieuse.")
+DELAI_RELANCE_SECONDES = 3
 
 CONSIGNE_ASSISTANT = ("Aide la recruteuse à préparer des questions pertinentes à partir du CV et du poste. "
                       "Ne crée aucun fait absent du CV. Rédige toujours en français.")
@@ -417,11 +437,12 @@ def creer_session_vocale(texte_cv, offre, sdp):
     session = {
         "model": MODELE_VOCAL,
         "instructions": CONSIGNE_RECRUTEUSE.format(
+            entreprise=nom_entreprise(offre),
             poste=f"{offre['intitule']} — {offre['entreprise']} ({offre['lieu']})",
             contexte=contexte_entretien(texte_cv, offre),
         ),
         "input": [{"type": "message", "role": "developer",
-                   "content": [{"type": "input_text", "text": CONSIGNE_OUVERTURE}]}],
+                   "content": [{"type": "input_text", "text": consigne_ouverture(offre)}]}],
         "delegation": {"type": "responses",
                        "responses": {"model": MODELE_ASSISTANT, "instructions": CONSIGNE_ASSISTANT}},
     }

@@ -26,6 +26,9 @@
     var etat = "attente";          // attente | connexion | direct | fin
     var connexion = null, micro = null, canal = null, chrono = null;
     var entretienId = null, secondes = 0, consigneOuverture = null;
+    // Relance : si Amina reste silencieuse après une réponse, on la relance (le candidat n'a pas à dire « allô »)
+    var consigneRelance = null, delaiRelance = 3;
+    var dernierMotCandidat = 0, attendReponse = false, relanceEnvoyee = false;
     var echanges = [];             // [{ role: "recruteuse" | "candidat", texte }]
     var repliqueEnCours = null;    // { role, texte } : la phrase en train d'être prononcée
 
@@ -77,6 +80,13 @@
     // dès que l'autre personne parle, une nouvelle réplique commence.
     function ajouterMorceau(role, morceau) {
         if (!morceau) return;
+        if (role === "candidat") {          // le candidat parle : on attendra la réaction d'Amina
+            dernierMotCandidat = Date.now();
+            attendReponse = true;
+            relanceEnvoyee = false;
+        } else {                            // Amina parle : plus besoin de la relancer
+            attendReponse = false;
+        }
         if (!repliqueEnCours || repliqueEnCours.role !== role) {
             repliqueEnCours = { role: role, texte: "" };
             echanges.push({ role: role, texte: "" });
@@ -118,6 +128,16 @@
         }
     }
 
+    // L'API « live » décide seule quand répondre, sans réglage de fin de tour. Si le candidat s'est tu
+    // depuis quelques secondes et qu'Amina n'a rien dit, on lui envoie une consigne de relance (une fois par réponse).
+    function relancerSiSilence() {
+        if (!attendReponse || relanceEnvoyee || !consigneRelance || !canal || canal.readyState !== "open") return;
+        if (Date.now() - dernierMotCandidat < delaiRelance * 1000) return;
+        canal.send(JSON.stringify({ type: "session.commentary.append", event_id: "relance-" + Date.now(),
+                                    delegation_id: null, content: consigneRelance }));
+        relanceEnvoyee = true;
+    }
+
     function sauvegarder() {
         if (!entretienId) return;
         envoyer(urlBilan(entretienId), { echanges: echangesPropres(), duree: secondes, final: false })
@@ -136,6 +156,7 @@
                 secondes++;
                 afficherTemps();
                 if (secondes % 20 === 0) sauvegarder();   // rien n'est perdu si la connexion coupe
+                relancerSiSilence();
                 if (secondes >= DUREE_MAX) terminer();
             }, 1000);
         } else if (etat === "connexion") {
@@ -187,6 +208,10 @@
                 .then(function (reponse) {
                     entretienId = reponse.entretien_id;
                     consigneOuverture = reponse.ouverture;
+                    consigneRelance = reponse.relance || null;
+                    delaiRelance = reponse.delai_relance || 3;
+                    attendReponse = false;
+                    relanceEnvoyee = false;
                     return connexion.setRemoteDescription({ type: "answer", sdp: reponse.sdp });
                 });
             // C'est l'événement « session.started » qui lance le minuteur

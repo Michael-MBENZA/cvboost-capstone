@@ -403,7 +403,8 @@ def session_entretien(doc_id, reference):
     db.session.add(nouvel)
     db.session.commit()
     return jsonify(sdp=sdp_reponse, entretien_id=nouvel.id, duree_max=ia.DUREE_MAX_SECONDES,
-                   ouverture=ia.CONSIGNE_OUVERTURE)
+                   ouverture=ia.consigne_ouverture(offre_trouvee),
+                   relance=ia.CONSIGNE_RELANCE, delai_relance=ia.DELAI_RELANCE_SECONDES)
 
 
 @bp.route("/documents/<int:doc_id>/offres/<reference>/entretien/<int:entretien_id>/bilan", methods=["POST"])

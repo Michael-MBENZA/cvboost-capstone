@@ -485,3 +485,42 @@ def test_historique_affiche_non_note(connecte, app, monkeypatch):
     assert bilan["note"] is None
     page = connecte.get(f"/documents/{doc_id}/offres/OEM1/entretien").get_data(as_text=True)
     assert "Non noté" in page and "None / 100" not in page
+
+
+def test_amina_se_presente_comme_assistante_drh_de_l_entreprise(app, monkeypatch):
+    """Amina représente l'employeur de l'offre (et non « une recruteuse à Kinshasa »)."""
+    envoye = {}
+
+    class FausseReponse:
+        ok = True
+
+        def json(self):
+            return {"transport": {"sdp": "v=0 reponse"}}
+
+    def faux_post(url, timeout, headers, json):
+        envoye.update(json)
+        return FausseReponse()
+
+    import requests
+    monkeypatch.setattr(requests, "post", faux_post)
+    app.config["OPENAI_API_KEY"] = "sk-test-factice"
+    offre = {"intitule": "Deputy Safety Advisor", "entreprise": "INSO", "lieu": "Goma", "reference": "R1",
+             "description": "Sécurité des ONG.", "description_disponible": True}
+    with app.app_context():
+        assert ia.creer_session_vocale("CV de test", offre, "v=0 offre") == "v=0 reponse"
+    consigne = envoye["session"]["instructions"]
+    ouverture = envoye["session"]["input"][0]["content"][0]["text"]
+    assert "assistante DRH chez INSO" in consigne and "recruteuse RH bienveillante mais exigeante, à Kinshasa" not in consigne
+    assert "ne reste jamais" in consigne                      # elle réagit dès la fin de la réponse
+    assert "assistante DRH chez INSO" in ouverture and "Deputy Safety Advisor" in ouverture
+    assert ia.nom_entreprise({"entreprise": "Non précisé"}) == "l'entreprise qui recrute"
+
+
+def test_session_renvoie_l_ouverture_et_la_relance(connecte, app, monkeypatch):
+    doc_id = preparer(connecte, app)
+    app.config["OPENAI_API_KEY"] = "sk-test-factice"
+    session_ok(monkeypatch)
+    reponse = connecte.post(f"/documents/{doc_id}/offres/OEM1/entretien/session",
+                            json={"sdp": "v=0 offre"}).get_json()
+    assert "assistante DRH chez ACME" in reponse["ouverture"]
+    assert reponse["relance"] == ia.CONSIGNE_RELANCE and reponse["delai_relance"] == 3
