@@ -38,7 +38,13 @@ services:
       - "5000:5000"
     volumes:
       - cv_deposes:/app/uploads                  # les CV survivent à l'arrêt des conteneurs
-      - journaux:/app/logs
+      - journaux:/app/logs                       # uploads.log et erreurs.log
+    healthcheck:                                 # /health vérifie aussi que la base répond
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
     depends_on:
       db:
         condition: service_healthy               # attend que PostgreSQL soit vraiment prêt
@@ -53,6 +59,8 @@ services:
     env_file: .env                               # OPENAI_API_KEY, API_PITCH_CLE
     ports:
       - "8000:8000"
+    volumes:
+      - journaux:/app/logs                       # api_erreurs.log (même volume que le site)
     healthcheck:                                 # interroge /health toutes les 30 s
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s

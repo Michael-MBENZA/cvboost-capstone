@@ -1,0 +1,82 @@
+{
+  "wer_global_pct": 4.0,
+  "cer_global_pct": 1.0,
+  "nombre_phrases": 8,
+  "details": [
+    {
+      "numero": 1,
+      "reference": "Je m'appelle Grace Kabila Mukendi et j'habite à Kinshasa.",
+      "entendu": "Je m'appelle Grace Kabila Mpandi et j'habite à Kinshasa.",
+      "wer_pct": 9.1,
+      "cer_pct": 5.4,
+      "duree_audio_s": 3.54,
+      "duree_synthese_s": 21.76
+    },
+    {
+      "numero": 2,
+      "reference": "J'ai obtenu une licence en gestion à l'Université de Kinshasa en deux mille vingt-quatre.",
+      "entendu": "J'ai obtenu une licence en gestion à l'université de Kinshasa en deux mille vingt-quatre.",
+      "wer_pct": 0.0,
+      "cer_pct": 0.0,
+      "duree_audio_s": 5.23,
+      "duree_synthese_s": 0.72
+    },
+    {
+      "numero": 3,
+      "reference": "J'ai travaillé comme assistante administrative à l'ONG Santé Pour Tous pendant trois ans.",
+      "entendu": "J'ai travaillé comme assistante administrative à l'Onsanté pour tout pendant trois ans.",
+      "wer_pct": 20.0,
+      "cer_pct": 3.4,
+      "duree_audio_s": 4.74,
+      "duree_synthese_s": 0.62
+    },
+    {
+      "numero": 4,
+      "reference": "Je maîtrise Excel, Word et la gestion de caisse.",
+      "entendu": "Je maîtrise Excel, Word et la gestion de caisse.",
+      "wer_pct": 0.0,
+      "cer_pct": 0.0,
+      "duree_audio_s": 3.08,
+      "duree_synthese_s": 0.43
+    },
+    {
+      "numero": 5,
+      "reference": "J'ai organisé douze ateliers de formation pour les agents de santé communautaires.",
+      "entendu": "J'ai organisé douze ateliers de formation pour les agents de santé communautaires.",
+      "wer_pct": 0.0,
+      "cer_pct": 0.0,
+      "duree_audio_s": 4.66,
+      "duree_synthese_s": 0.65
+    },
+    {
+      "numero": 6,
+      "reference": "Je parle français, lingala et anglais à un niveau intermédiaire.",
+      "entendu": "Je parle français, lingala et anglais à un niveau intermédiaire.",
+      "wer_pct": 0.0,
+      "cer_pct": 0.0,
+      "duree_audio_s": 4.63,
+      "duree_synthese_s": 0.61
+    },
+    {
+      "numero": 7,
+      "reference": "Je recherche un poste d'assistante de programme dans une organisation humanitaire.",
+      "entendu": "Je recherche un poste d'assistante de programme dans une organisation humanitaire.",
+      "wer_pct": 0.0,
+      "cer_pct": 0.0,
+      "duree_audio_s": 4.73,
+      "duree_synthese_s": 0.65
+    },
+    {
+      "numero": 8,
+      "reference": "Je suis développeur Python et j'ai construit une application web avec Flask.",
+      "entendu": "Je suis développeur Python et j'ai construit une application web avec Flask.",
+      "wer_pct": 0.0,
+      "cer_pct": 0.0,
+      "duree_audio_s": 4.49,
+      "duree_synthese_s": 0.69
+    }
+  ],
+  "date": "2026-11-12",
+  "modele_vocal": "tts_models/fr/css10/vits",
+  "modele_transcription": "gpt-4o-mini-transcribe"
+}

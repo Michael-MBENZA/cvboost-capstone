@@ -59,6 +59,9 @@ USER cvboost
 # Modèle de voix téléchargé UNE fois, pendant la construction : il fait partie de l'image
 RUN python -c "from TTS.api import TTS; TTS('tts_models/fr/css10/vits')"
 
+# Journal des erreurs (api_erreurs.log). Placé APRÈS le modèle : le changer ne retélécharge pas les 104 Mo
+RUN mkdir -p logs
+
 COPY --chown=cvboost:cvboost api_service/ api_service/
 
 EXPOSE 8000

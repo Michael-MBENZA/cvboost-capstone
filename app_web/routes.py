@@ -58,6 +58,30 @@ def nom_source(code):
     return NOMS_SOURCES.get(code, code)
 
 
+DEMARRE_LE = datetime.now(timezone.utc)
+
+
+@bp.route("/health")
+def sante():
+    """Santé du site (MLOps) : utilisée par Docker et par l'hébergeur pour savoir si le site répond.
+    200 si la base de données répond, 503 sinon. Aucune donnée personnelle n'est renvoyée."""
+    from sqlalchemy import text
+    try:
+        db.session.execute(text("SELECT 1"))
+        base = "ok"
+    except Exception as erreur:  # base arrêtée, mot de passe faux, réseau...
+        current_app.logger.error("Health : base de données injoignable : %s", erreur)
+        base = "injoignable"
+    return jsonify(
+        statut="ok" if base == "ok" else "degrade",
+        base_de_donnees=base,
+        moteur_base=db.engine.dialect.name,                 # sqlite ou postgresql
+        offres_chargees=len(ia.charger_offres()) if os.path.exists(current_app.config["OFFRES_CSV"]) else 0,
+        openai_configure=ia.mode_actuel() == "openai",
+        demarre_depuis_secondes=int((datetime.now(timezone.utc) - DEMARRE_LE).total_seconds()),
+    ), (200 if base == "ok" else 503)
+
+
 @bp.route("/")
 def index():
     # Les 5 offres les plus récentes (le CSV est déjà trié par date de publication)

@@ -11,12 +11,14 @@ import os
 import secrets
 import time
 import uuid
+import wave
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
 from urllib.parse import quote
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
@@ -24,18 +26,42 @@ DOSSIER_API = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(DOSSIER_API, "..", ".env"))
 
 from .services import llm_reformulator, tts_engine  # noqa: E402  (après load_dotenv)
+from .services.metriques import metriques  # noqa: E402
 
 DOSSIER_AUDIO = os.path.join(DOSSIER_API, "temp_audio")
+DOSSIER_LOGS = os.getenv("LOG_FOLDER", os.path.join(DOSSIER_API, "..", "logs"))
 LONGUEUR_MIN_CV = 50
 LONGUEUR_MAX_CV = 15000  # comme app_web/extraction.py : maîtrise du coût et du contexte du LLM
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+FORMAT_LOGS = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+logging.basicConfig(level=logging.INFO, format=FORMAT_LOGS)
 logger = logging.getLogger("cvboost.api")
+
+
+def brancher_journal_erreurs(dossier):
+    """logs/api_erreurs.log : avertissements et erreurs de l'API, avec la trace complète des exceptions.
+    Rotation : 5 fichiers de 1 Mo au maximum."""
+    for ancien in [h for h in logger.handlers if h.get_name() == "cvboost-api-erreurs"]:
+        logger.removeHandler(ancien)
+        ancien.close()
+    try:
+        os.makedirs(dossier, exist_ok=True)
+        handler = RotatingFileHandler(os.path.join(dossier, "api_erreurs.log"), maxBytes=1_000_000,
+                                      backupCount=5, encoding="utf-8")
+    except OSError as erreur:  # dossier non accessible en écriture : l'API fonctionne quand même
+        logger.warning("Journal des erreurs indisponible (%s) : erreurs affichées seulement à l'écran", erreur)
+        return
+    handler.setLevel(logging.WARNING)
+    handler.setFormatter(logging.Formatter(FORMAT_LOGS, "%Y-%m-%d %H:%M:%S"))
+    handler.set_name("cvboost-api-erreurs")
+    logger.addHandler(handler)
 
 
 @asynccontextmanager
 async def demarrage(app):
-    """Au démarrage : dossier audio prêt et modèle vocal chargé une fois pour toutes."""
+    """Au démarrage : journal des erreurs, dossier audio prêt et modèle vocal chargé une fois pour toutes."""
+    brancher_journal_erreurs(DOSSIER_LOGS)
+    metriques.remettre_a_zero()
     os.makedirs(DOSSIER_AUDIO, exist_ok=True)
     if os.getenv("PRECHARGER_VOIX", "1") == "1":
         debut = time.perf_counter()
@@ -55,6 +81,30 @@ app = FastAPI(
     version="1.0.0",
     lifespan=demarrage,
 )
+
+
+@app.middleware("http")
+async def compter_les_requetes(request: Request, call_next):
+    """Chaque requête est comptée par route et par code HTTP (vu dans /metrics).
+    Une exception non prévue est comptée comme une erreur 500 avant d'être traitée plus bas."""
+    route = request.url.path
+    try:
+        reponse = await call_next(request)
+    except Exception:
+        metriques.requete(route, 500)
+        raise
+    metriques.requete(route, reponse.status_code)
+    if reponse.status_code == 422:
+        metriques.erreur("validation")
+    return reponse
+
+
+@app.exception_handler(Exception)
+async def erreur_inattendue(request: Request, erreur: Exception):
+    """Toute erreur non prévue (bug) : trace complète dans logs/api_erreurs.log, message neutre au client."""
+    metriques.erreur("inattendue")
+    logger.exception("Erreur inattendue sur %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "Erreur interne de l'API."})
 
 
 class DemandePitch(BaseModel):
@@ -86,17 +136,32 @@ def supprimer_fichier(chemin):
         pass
 
 
+def duree_audio(chemin_wav):
+    """Durée d'un fichier WAV en secondes (0 si illisible)."""
+    try:
+        with wave.open(chemin_wav) as fichier:
+            return fichier.getnframes() / fichier.getframerate()
+    except (wave.Error, OSError, ZeroDivisionError):
+        return 0.0
+
+
 # ---------- Routes ----------
 
 @app.get("/health")
 def sante(moteur=Depends(obtenir_moteur_vocal)):
-    """Santé de l'API (utilisée plus tard par Docker et Azure pour savoir si le service répond)."""
+    """Santé de l'API (utilisée par Docker, et plus tard par l'hébergeur, pour savoir si le service répond)."""
     return {
         "statut": "ok",
         "voix_chargee": moteur.charge,
         "modele_vocal": moteur.nom_modele,
         "openai_configure": bool(os.getenv("OPENAI_API_KEY")),
     }
+
+
+@app.get("/metrics")
+def metriques_api():
+    """Métriques de fonctionnement (MLOps) : requêtes, erreurs, durées, tokens, secondes d'audio produites."""
+    return metriques.instantane()
 
 
 @app.post("/speak-smart", response_class=FileResponse, dependencies=[Depends(verifier_cle_api)],
@@ -112,6 +177,7 @@ def speak_smart(demande: DemandePitch,
     try:
         pitch, tokens = reformuler(demande.texte_cv)
     except llm_reformulator.ReformulationImpossible as erreur:
+        metriques.erreur("llm")
         logger.error("Étape 1 (LLM) : %s", erreur)
         raise HTTPException(status_code=502, detail="Le service de reformulation (OpenAI) est indisponible.")
     duree_llm = time.perf_counter() - debut
@@ -123,12 +189,15 @@ def speak_smart(demande: DemandePitch,
         moteur.synthetiser(pitch, chemin)
     except tts_engine.SyntheseImpossible as erreur:
         supprimer_fichier(chemin)
+        metriques.erreur("voix")
         logger.error("Étape 2 (TTS) : %s", erreur)
         raise HTTPException(status_code=503, detail="La synthèse vocale a échoué.")
     duree_totale = time.perf_counter() - debut
+    secondes_audio = duree_audio(chemin)
 
-    logger.info("Pitch généré : %d caractères, %d tokens, LLM %.1f s, total %.1f s",
-                len(pitch), tokens, duree_llm, duree_totale)
+    metriques.pitch(duree_llm, duree_totale - duree_llm, duree_totale, secondes_audio, tokens)
+    logger.info("Pitch généré : %d caractères, %d tokens, %.1f s d'audio, LLM %.1f s, total %.1f s",
+                len(pitch), tokens, secondes_audio, duree_llm, duree_totale)
     return FileResponse(
         chemin,
         media_type="audio/wav",

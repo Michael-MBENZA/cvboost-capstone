@@ -54,15 +54,22 @@ class FauxMoteur:
 def api_client(tmp_path, monkeypatch):
     """Client de l'API avec un dossier audio temporaire et une fausse voix."""
     monkeypatch.setattr(api, "DOSSIER_AUDIO", str(tmp_path / "temp_audio"))
+    monkeypatch.setattr(api, "DOSSIER_LOGS", str(tmp_path / "logs"))   # journal des erreurs temporaire
     monkeypatch.setenv("PRECHARGER_VOIX", "0")   # ne charge pas le vrai modèle au démarrage
     monkeypatch.delenv("API_PITCH_CLE", raising=False)
     moteur = FauxMoteur()
     api.app.dependency_overrides[api.obtenir_reformulateur] = lambda: (lambda texte: (PITCH, 321))
     api.app.dependency_overrides[api.obtenir_moteur_vocal] = lambda: moteur
-    with TestClient(api.app) as client:
+    # raise_server_exceptions=False : une erreur 500 est renvoyée comme à un vrai client (et non relancée)
+    with TestClient(api.app, raise_server_exceptions=False) as client:
         client.moteur = moteur
+        client.journal = tmp_path / "logs" / "api_erreurs.log"
         yield client
     api.app.dependency_overrides.clear()
+    api.brancher_journal_erreurs(str(tmp_path / "logs"))   # referme le fichier avant la suppression du dossier
+    for handler in [h for h in api.logger.handlers if h.get_name() == "cvboost-api-erreurs"]:
+        api.logger.removeHandler(handler)
+        handler.close()
 
 
 # ---------- API FastAPI ----------
@@ -168,3 +175,125 @@ def test_le_prompt_est_strict():
     prompt = llm_reformulator.PROMPT_SYSTEME
     for exigence in ("UNIQUEMENT", "n'invente", "première personne", "voix de synthèse", "coordonnées"):
         assert exigence in prompt
+
+
+# ---------- MLOps : métriques, journal des erreurs, santé du site ----------
+
+def test_metrics_compte_les_pitchs_et_les_erreurs(api_client):
+    api_client.post("/speak-smart", json={"texte_cv": TEXTE_CV})           # réussi
+    api_client.post("/speak-smart", json={"texte_cv": "court"})            # 422
+
+    def panne(texte):
+        raise llm_reformulator.ReformulationImpossible("Erreur OpenAI : APIConnectionError")
+
+    api.app.dependency_overrides[api.obtenir_reformulateur] = lambda: panne
+    api_client.post("/speak-smart", json={"texte_cv": TEXTE_CV})           # 502
+
+    m = api_client.get("/metrics").json()
+    assert m["pitchs_reussis"] == 1 and m["tokens_openai"] == 321
+    assert m["erreurs"] == {"validation": 1, "llm": 1}
+    assert m["requetes_par_route"]["/speak-smart 200"] == 1
+    assert m["requetes_par_route"]["/speak-smart 502"] == 1
+    assert m["secondes_audio_generees"] == 0.1                             # le petit WAV fait 0,1 s
+    assert m["durees"]["total"]["mesures"] == 1
+    assert m["taux_erreurs_serveur_pct"] == 33.3                           # 1 erreur 5xx sur 3 requêtes
+
+
+def test_erreur_ecrite_dans_le_journal(api_client):
+    def panne(texte):
+        raise llm_reformulator.ReformulationImpossible("Erreur OpenAI : RateLimitError")
+
+    api.app.dependency_overrides[api.obtenir_reformulateur] = lambda: panne
+    api_client.post("/speak-smart", json={"texte_cv": TEXTE_CV})
+    journal = api_client.journal.read_text(encoding="utf-8")
+    assert "ERROR | cvboost.api | Étape 1 (LLM) : Erreur OpenAI : RateLimitError" in journal
+
+
+def test_erreur_inattendue_500_journalisee_sans_details(api_client):
+    def bug(texte):
+        raise RuntimeError("bug de test")
+
+    api.app.dependency_overrides[api.obtenir_reformulateur] = lambda: bug
+    reponse = api_client.post("/speak-smart", json={"texte_cv": TEXTE_CV})
+    assert reponse.status_code == 500
+    assert reponse.json() == {"detail": "Erreur interne de l'API."}        # aucun détail technique au client
+    journal = api_client.journal.read_text(encoding="utf-8")
+    assert "Erreur inattendue sur POST /speak-smart" in journal and "RuntimeError: bug de test" in journal
+    assert api_client.get("/metrics").json()["erreurs"]["inattendue"] == 1
+
+
+def test_sante_du_site(client):
+    reponse = client.get("/health")
+    assert reponse.status_code == 200
+    donnees = reponse.get_json()
+    assert donnees["statut"] == "ok" and donnees["base_de_donnees"] == "ok"
+    assert donnees["moteur_base"] == "sqlite"
+    assert "email" not in str(donnees)                                     # aucune donnée personnelle
+
+
+def test_sante_du_site_base_injoignable(app, client, monkeypatch):
+    from app_web import db
+
+    def base_en_panne(*args, **kwargs):
+        raise RuntimeError("connexion refusée")
+
+    monkeypatch.setattr(db.session, "execute", base_en_panne)
+    reponse = client.get("/health")
+    assert reponse.status_code == 503 and reponse.get_json()["base_de_donnees"] == "injoignable"
+    journal = os.path.join(app.config["LOG_FOLDER"], "erreurs.log")
+    assert "base de données injoignable : connexion refusée" in open(journal, encoding="utf-8").read()
+
+
+def test_erreur_500_du_site_dans_erreurs_log(app):
+    app.config["PROPAGATE_EXCEPTIONS"] = False          # comportement réel : page 500, exception enregistrée
+    app.add_url_rule("/test-bug", "test_bug", lambda: 1 / 0)
+    reponse = app.test_client().get("/test-bug")
+    assert reponse.status_code == 500
+    journal = open(os.path.join(app.config["LOG_FOLDER"], "erreurs.log"), encoding="utf-8").read()
+    assert "Exception on /test-bug [GET]" in journal and "ZeroDivisionError" in journal
+
+
+# ---------- Métriques audio : WER, CER, MOS ----------
+
+from api_service import evaluer_voix  # noqa: E402
+
+
+def test_distance_edition():
+    assert evaluer_voix.distance_edition("chat", "chats") == 1          # insertion
+    assert evaluer_voix.distance_edition("chat", "chut") == 1           # substitution
+    assert evaluer_voix.distance_edition(["a", "b", "c"], ["a", "c"]) == 1   # suppression d'un mot
+    assert evaluer_voix.distance_edition("", "abc") == 3
+
+
+def test_wer_et_cer():
+    reference = "Je m'appelle Grace Kabila Mukendi et j'habite à Kinshasa."
+    assert evaluer_voix.wer(reference, reference) == 0.0
+    # 1 mot faux sur 11 (« Mukendi » -> « Mpandi ») : WER = 9,1 %
+    assert round(100 * evaluer_voix.wer(reference, reference.replace("Mukendi", "Mpandi")), 1) == 9.1
+    assert 0 < evaluer_voix.cer(reference, reference.replace("Mukendi", "Mpandi")) < 0.1
+    # Accents, majuscules et ponctuation ne comptent pas comme des erreurs
+    assert evaluer_voix.wer("L'Université, à Kinshasa !", "l universite a kinshasa") == 0.0
+
+
+def test_nombres_normalises_en_lettres():
+    pytest.importorskip("num2words")                    # installé avec Coqui (pas dans le requirements du site)
+    assert evaluer_voix.wer("en deux mille vingt-quatre", "en 2024") == 0.0
+
+
+def test_evaluation_complete_avec_faux_transcripteur(tmp_path):
+    entendus = iter(["Je m'appelle Grace.", "Je parle lingala et français."])
+    resultats = evaluer_voix.evaluer(FauxMoteur(), lambda chemin: next(entendus),
+                                     ["Je m'appelle Grace.", "Je parle français et lingala."], str(tmp_path))
+    assert resultats["details"][0]["wer_pct"] == 0.0
+    assert resultats["details"][1]["wer_pct"] == 40.0   # 2 mots inversés = 2 substitutions sur 5 mots
+    assert resultats["wer_global_pct"] == 22.2          # 2 erreurs sur 9 mots (« je m appelle grace » = 4 mots)
+    assert resultats["details"][0]["duree_audio_s"] == 0.1
+
+
+def test_calcul_du_mos():
+    resultat = evaluer_voix.calculer_mos([4, 4, 3, 5, 4, "3", 9])    # 9 : hors échelle, ignoré
+    assert resultat["mos"] == 3.83 and resultat["nombre_notes"] == 6
+    bas, haut = resultat["intervalle_95"]
+    assert bas < resultat["mos"] < haut
+    with pytest.raises(ValueError):
+        evaluer_voix.calculer_mos([0, 7])

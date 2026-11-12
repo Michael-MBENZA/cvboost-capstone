@@ -1,5 +1,7 @@
 import logging
 import os
+from logging.handlers import RotatingFileHandler
+
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
@@ -32,6 +34,31 @@ def creer_logger_uploads(chemin_fichier):
     return logger
 
 
+FORMAT_ERREURS = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+
+
+def journal_erreurs(chemin_fichier):
+    """Fichier logs/erreurs.log : avertissements et erreurs (avec la trace complète des exceptions).
+
+    Rotation : 5 fichiers de 1 Mo au maximum (erreurs.log, erreurs.log.1...), le disque ne se remplit jamais."""
+    handler = RotatingFileHandler(chemin_fichier, maxBytes=1_000_000, backupCount=5, encoding="utf-8")
+    handler.setLevel(logging.WARNING)
+    handler.setFormatter(logging.Formatter(FORMAT_ERREURS, "%Y-%m-%d %H:%M:%S"))
+    handler.set_name("cvboost-erreurs")
+    return handler
+
+
+def brancher_journal_erreurs(app):
+    """Toute erreur du site (exception non prévue = erreur 500, panne OpenAI...) est écrite dans le fichier.
+    Flask enregistre déjà chaque exception non gérée avec app.logger.error : il suffit d'y brancher le fichier."""
+    for ancien in [h for h in app.logger.handlers if h.get_name() == "cvboost-erreurs"]:
+        app.logger.removeHandler(ancien)
+        ancien.close()
+    app.logger.addHandler(journal_erreurs(os.path.join(app.config["LOG_FOLDER"], "erreurs.log")))
+    if app.logger.level == logging.NOTSET or app.logger.level > logging.INFO:
+        app.logger.setLevel(logging.INFO)
+
+
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
@@ -45,6 +72,8 @@ def create_app(config_class=Config):
     app.logger_uploads = creer_logger_uploads(
         os.path.join(app.config["LOG_FOLDER"], "uploads.log")
     )
+    # Journal des erreurs (Sprint 4, MLOps) : logs/erreurs.log
+    brancher_journal_erreurs(app)
 
     db.init_app(app)
     login_manager.init_app(app)
