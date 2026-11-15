@@ -1,0 +1,39 @@
+# Production (serveur) : à utiliser EN PLUS de docker-compose.yml
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Ce fichier :
+#   - ferme au public les ports 5000 (site) et 8000 (API) : seul Caddy est joignable depuis internet ;
+#   - ajoute Caddy, qui sert le site et l'API en HTTPS (certificats Let's Encrypt automatiques) ;
+#   - indique au site qu'il est derrière un proxy (vraie adresse IP des visiteurs, HTTPS).
+# À ajouter dans le .env du serveur : SITE_ADRESSE, API_ADRESSE (et API_PITCH_CLE pour protéger l'API).
+
+services:
+
+  web:
+    ports: !reset []                     # plus de port 5000 ouvert sur internet
+    environment:
+      DERRIERE_PROXY: "1"                # Flask lit l'IP et le HTTPS transmis par Caddy
+
+  api:
+    ports: !reset []                     # plus de port 8000 ouvert sur internet
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"                          # HTTP (redirigé vers HTTPS, et utilisé pour obtenir le certificat)
+      - "443:443"                        # HTTPS
+    environment:
+      SITE_ADRESSE: ${SITE_ADRESSE:?SITE_ADRESSE manque dans .env}
+      API_ADRESSE: ${API_ADRESSE:?API_ADRESSE manque dans .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_donnees:/data              # certificats HTTPS gardés d'un redémarrage à l'autre
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+    restart: unless-stopped
+
+volumes:
+  caddy_donnees:
+  caddy_config:

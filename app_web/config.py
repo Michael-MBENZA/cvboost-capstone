@@ -33,3 +33,6 @@ class Config:
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     # Offres d'emploi réelles préparées au Sprint 2 (scraping + nettoyage Pandas)
     OFFRES_CSV = os.path.join(BASE_DIR, "data", "processed", "jobs_clean.csv")
+
+    # Production : site derrière le proxy HTTPS Caddy (docker-compose.prod.yml met DERRIERE_PROXY=1)
+    DERRIERE_PROXY = os.getenv("DERRIERE_PROXY", "") == "1"

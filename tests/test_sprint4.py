@@ -297,3 +297,47 @@ def test_calcul_du_mos():
     assert bas < resultat["mos"] < haut
     with pytest.raises(ValueError):
         evaluer_voix.calculer_mos([0, 7])
+
+
+# ---------- Production : site derrière le proxy HTTPS (Caddy) ----------
+
+def test_derriere_proxy_vraie_ip_et_https(tmp_path):
+    """Avec DERRIERE_PROXY, Flask lit l'IP du visiteur et le HTTPS transmis par Caddy."""
+    from flask import request
+    from app_web import create_app
+    from app_web.config import Config
+
+    class ConfigProxy(Config):
+        TESTING = True
+        DERRIERE_PROXY = True
+        SQLALCHEMY_DATABASE_URI = "sqlite:///" + str(tmp_path / "proxy.db")
+        UPLOAD_FOLDER = str(tmp_path / "uploads")
+        LOG_FOLDER = str(tmp_path / "logs")
+
+    appli = create_app(ConfigProxy)
+    vu = {}
+
+    @appli.route("/test-ip")
+    def test_ip():
+        vu.update(ip=request.remote_addr, https=request.is_secure)
+        return "ok"
+
+    appli.test_client().get("/test-ip", environ_base={"REMOTE_ADDR": "172.18.0.5"},
+                            headers={"X-Forwarded-For": "41.243.10.20", "X-Forwarded-Proto": "https"})
+    assert vu == {"ip": "41.243.10.20", "https": True}       # l'IP du visiteur, pas celle de Caddy
+    assert appli.config["SESSION_COOKIE_SECURE"] is True
+
+
+def test_sans_proxy_l_en_tete_est_ignore(app):
+    """Sans DERRIERE_PROXY (développement), un en-tête X-Forwarded-For ne peut pas falsifier l'IP."""
+    from flask import request
+    vu = {}
+
+    @app.route("/test-ip-direct")
+    def test_ip_direct():
+        vu["ip"] = request.remote_addr
+        return "ok"
+
+    app.test_client().get("/test-ip-direct", environ_base={"REMOTE_ADDR": "10.0.0.7"},
+                          headers={"X-Forwarded-For": "1.2.3.4"})
+    assert vu["ip"] == "10.0.0.7"

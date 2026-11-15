@@ -63,6 +63,15 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    # En production, le site est derrière Caddy (HTTPS). Sans ProxyFix, Flask verrait l'adresse IP
+    # de Caddy pour tous les visiteurs (l'audit des fraudes confondrait tout le monde) et croirait
+    # être en HTTP. Activé seulement si DERRIERE_PROXY=1 : un visiteur direct ne peut pas mentir sur son IP.
+    if app.config.get("DERRIERE_PROXY"):
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+        app.config["SESSION_COOKIE_SECURE"] = True   # cookie de session envoyé seulement en HTTPS
+        app.config["REMEMBER_COOKIE_SECURE"] = True
+
     # Crée les dossiers nécessaires s'ils n'existent pas
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
     os.makedirs(os.path.join(BASE_DIR, "database"), exist_ok=True)

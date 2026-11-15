@@ -1,0 +1,14 @@
+# Caddy : seule porte d'entrée depuis internet (ports 80 et 443), utilisée en production.
+# Il obtient tout seul un certificat HTTPS gratuit (Let's Encrypt) pour chaque adresse,
+# puis transmet les requêtes aux conteneurs par le réseau interne de Docker.
+# Les adresses viennent du fichier .env du serveur (SITE_ADRESSE, API_ADRESSE).
+
+{$SITE_ADRESSE} {
+	encode gzip
+	reverse_proxy web:5000
+}
+
+{$API_ADRESSE} {
+	encode gzip
+	reverse_proxy api:8000
+}
