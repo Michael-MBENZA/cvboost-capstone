@@ -341,3 +341,125 @@ def test_sans_proxy_l_en_tete_est_ignore(app):
     app.test_client().get("/test-ip-direct", environ_base={"REMOTE_ADDR": "10.0.0.7"},
                           headers={"X-Forwarded-For": "1.2.3.4"})
     assert vu["ip"] == "10.0.0.7"
+
+
+# ---------- Site Flask : bouton « Mon pitch audio » (intégration de bout en bout, jalon S5) ----------
+
+from urllib.parse import quote  # noqa: E402
+
+from app_web import pitch as pitch_site  # noqa: E402
+
+
+def deposer_cv(client):
+    """Dépose un vrai petit DOCX (fabriqué par python-docx) et renvoie l'id du document."""
+    import docx
+
+    from app_web.models import Document
+    fichier = io.BytesIO()
+    document = docx.Document()
+    document.add_paragraph(TEXTE_CV)
+    document.save(fichier)
+    fichier.seek(0)
+    client.post("/upload", data={"cv": (fichier, "mon_cv.docx")}, content_type="multipart/form-data")
+    return Document.query.first().id
+
+
+@pytest.fixture
+def api_simulee(monkeypatch):
+    """Remplace l'appel HTTP à l'API par une réponse simulée et compte les appels."""
+    appels = []
+
+    def fausse_api(texte_cv):
+        appels.append(texte_cv)
+        return wav_minuscule(), PITCH, 321
+
+    monkeypatch.setattr(pitch_site, "demander_pitch", fausse_api)
+    return appels
+
+
+def test_bouton_pitch_dans_mes_cv(app, connecte):
+    with app.app_context():
+        deposer_cv(connecte)
+    assert "Mon pitch audio" in connecte.get("/history").get_data(as_text=True)
+
+
+def test_generer_puis_ecouter_le_pitch(app, connecte, api_simulee):
+    with app.app_context():
+        doc_id = deposer_cv(connecte)
+    page = connecte.get(f"/documents/{doc_id}/pitch").get_data(as_text=True)
+    assert "Générer mon pitch" in page and api_simulee == []      # GET ne lance rien (pas de coût)
+
+    reponse = connecte.post(f"/documents/{doc_id}/pitch")
+    assert reponse.status_code == 302                              # POST -> redirection -> GET
+    assert len(api_simulee) == 1 and "Kadea Academy" in api_simulee[0]  # le texte du CV est bien envoyé
+
+    page = connecte.get(f"/documents/{doc_id}/pitch").get_data(as_text=True)
+    assert PITCH.replace("'", "&#39;") in page and "<audio" in page
+    with app.app_context():
+        from app_web.models import Pitch
+        pitch_id = Pitch.query.first().id
+    audio = connecte.get(f"/documents/{doc_id}/pitch/{pitch_id}.wav")
+    assert audio.status_code == 200 and audio.mimetype == "audio/wav"
+    assert audio.data[:4] == b"RIFF"
+
+    # Même CV : le pitch en cache est réutilisé (pas de nouvel appel payant)...
+    connecte.post(f"/documents/{doc_id}/pitch")
+    assert len(api_simulee) == 1
+    # ... sauf si l'utilisateur demande explicitement une autre version
+    connecte.post(f"/documents/{doc_id}/pitch", data={"regenerer": "1"})
+    assert len(api_simulee) == 2
+
+
+def test_api_arretee_message_clair(app, connecte, monkeypatch):
+    def api_arretee(texte_cv):
+        raise pitch_site.PitchIndisponible("Le service de pitch audio ne répond pas. Réessayez plus tard.")
+
+    monkeypatch.setattr(pitch_site, "demander_pitch", api_arretee)
+    with app.app_context():
+        doc_id = deposer_cv(connecte)
+    page = connecte.post(f"/documents/{doc_id}/pitch", follow_redirects=True).get_data(as_text=True)
+    assert "ne répond pas" in page
+    assert "Générer mon pitch" in page
+
+
+def test_demander_pitch_appelle_l_api(app, monkeypatch):
+    """Le vrai client HTTP du site : URL interne, en-tête X-API-Key et décodage du texte."""
+    recu = {}
+
+    class FausseReponse:
+        status_code = 200
+        content = wav_minuscule()
+        headers = {"X-Pitch-Texte": quote(PITCH), "X-Pitch-Tokens": "321"}
+        text = ""
+
+    def faux_post(url, json, headers, timeout):
+        recu.update(url=url, json=json, headers=headers, timeout=timeout)
+        return FausseReponse()
+
+    monkeypatch.setattr(pitch_site.requests, "post", faux_post)
+    app.config.update(API_PITCH_URL="http://api:8000/", API_PITCH_CLE="secret")
+    with app.app_context():
+        contenu, texte, tokens = pitch_site.demander_pitch(TEXTE_CV)
+    assert recu["url"] == "http://api:8000/speak-smart"
+    assert recu["headers"] == {"X-API-Key": "secret"}
+    assert recu["json"] == {"texte_cv": TEXTE_CV}
+    assert recu["timeout"] < 120                                   # sous le délai de Gunicorn
+    assert (texte, tokens, contenu[:4]) == (PITCH, 321, b"RIFF")
+
+
+def test_pitch_d_un_autre_utilisateur_inaccessible(app, connecte, api_simulee):
+    with app.app_context():
+        doc_id = deposer_cv(connecte)
+    connecte.post(f"/documents/{doc_id}/pitch")
+    connecte.post("/logout")
+    connecte.post("/register", data={"username": "autre", "email": "autre@test.cd",
+                                     "password": "motdepasse123", "confirm": "motdepasse123"})
+    connecte.post("/login", data={"email": "autre@test.cd", "password": "motdepasse123"})
+    assert connecte.get(f"/documents/{doc_id}/pitch").status_code == 404
+    assert connecte.get(f"/documents/{doc_id}/pitch/1.wav").status_code == 404
+
+
+def test_version_du_prompt_identique_dans_le_site_et_l_api():
+    """Le cache du site dépend de la version du prompt de l'API : les deux doivent suivre."""
+    from app_web.config import Config
+    assert Config.PITCH_PROMPT_VERSION == llm_reformulator.PROMPT_VERSION

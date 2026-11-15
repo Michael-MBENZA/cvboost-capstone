@@ -34,6 +34,8 @@ services:
     environment:
       # « db » = nom du service ci-dessus : Docker le transforme en adresse sur le réseau interne
       DATABASE_URL: postgresql+psycopg://cvboost:${POSTGRES_PASSWORD}@db:5432/cvboost
+      # Bouton « Mon pitch audio » : le site appelle l'API par le réseau interne (pas par internet)
+      API_PITCH_URL: http://api:8000
     ports:
       - "5000:5000"
     volumes:

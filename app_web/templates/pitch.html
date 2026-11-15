@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Mon pitch audio{% endblock %}
+
+{% block content %}
+<div class="titre-page">
+    <div>
+        <h1>Mon pitch audio</h1>
+        <p>{{ document.original_name }}</p>
+    </div>
+    <a class="btn btn-secondaire" href="{{ url_for('main.history') }}">Retour à mes CV</a>
+</div>
+
+{% if not pitch %}
+    <section class="bloc lancement">
+        <h2>Présentez-vous en une minute</h2>
+        <p>Votre CV est reformulé en une courte présentation orale, à la première personne,
+           puis lu par une voix de synthèse. Rien n'est ajouté à ce qui figure dans votre CV.
+           Écoutez-la pour préparer le « Présentez-vous » de vos entretiens.
+           La génération prend en général entre 20 secondes et une minute.</p>
+        <form method="POST" class="js-chargement">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn">Générer mon pitch</button>
+        </form>
+    </section>
+{% else %}
+    <p class="discret">Généré le {{ pitch.cree_le.strftime('%d/%m/%Y à %H:%M') }}</p>
+    <section class="bloc pitch">
+        <audio controls preload="metadata" src="{{ url_for('main.pitch_fichier', doc_id=document.id, pitch_id=pitch.id) }}">
+            Votre navigateur ne lit pas l'audio.
+            <a href="{{ url_for('main.pitch_fichier', doc_id=document.id, pitch_id=pitch.id) }}">Télécharger le fichier</a>.
+        </audio>
+        <h2>Texte du pitch</h2>
+        <p class="texte-pitch">{{ pitch.texte }}</p>
+        <div class="actions-pitch">
+            <a class="btn btn-secondaire" href="{{ url_for('main.pitch_fichier', doc_id=document.id, pitch_id=pitch.id) }}" download>Télécharger (.wav)</a>
+            <form method="POST" class="js-chargement">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="regenerer" value="1">
+                <button type="submit" class="btn btn-secondaire">Générer une autre version</button>
+            </form>
+        </div>
+    </section>
+{% endif %}
+{% endblock %}

@@ -90,3 +90,24 @@ class Entretien(db.Model):
 def load_user(user_id):
     # Flask-Login appelle cette fonction pour retrouver l'utilisateur de la session
     return db.session.get(User, int(user_id))
+
+
+class Pitch(db.Model):
+    """Pitch audio d'un CV (Sprint 4), généré par l'API FastAPI /speak-smart.
+
+    Le fichier .wav est rangé dans uploads/pitchs/ (privé, servi seulement à son propriétaire).
+    L'empreinte (SHA-256 du texte du CV + version du prompt) évite de repayer OpenAI
+    tant que le CV ne change pas."""
+
+    __tablename__ = "pitchs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    document_id = db.Column(db.Integer, db.ForeignKey("documents.id"), nullable=False)
+    empreinte = db.Column(db.String(64), nullable=False, index=True)
+    texte = db.Column(db.Text, nullable=False)              # le pitch reformulé par le LLM
+    fichier = db.Column(db.String(64), nullable=False)      # ex : 3f2a...e1.wav (nom UUID)
+    tokens = db.Column(db.Integer, default=0)               # suivi des coûts OpenAI
+    cree_le = db.Column(db.DateTime, default=maintenant)
+
+    document = db.relationship("Document", backref=db.backref("pitchs", cascade="all, delete-orphan"))
