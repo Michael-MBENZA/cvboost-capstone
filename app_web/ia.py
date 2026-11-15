@@ -408,17 +408,28 @@ sur les noms propres, les sigles et les mots rares (un nom peut devenir des mots
 passage incompréhensible ou absurde est très probablement une erreur de transcription : ne le
 compte ni comme une réponse confuse ni comme un manque de clarté, et ne le cite pas. Juge la clarté
 sur la structure et la longueur des réponses, pas sur l'orthographe ou les mots mal reconnus.
-Dans les points forts et les points à améliorer, cite entre guillemets de courts extraits des réponses
-du candidat. Adresse-toi directement au candidat avec « vous » dans TOUTES les phrases (jamais « le candidat » ni « il »). Réponds en français, uniquement avec un objet JSON :
+REMARQUES RELIÉES À CET ENTRETIEN (obligatoire, comme pour la note) :
+- points_forts (1 à 3) : chacun contient une "citation" COPIÉE MOT POUR MOT d'une réponse du candidat
+  (5 à 25 mots, sans la reformuler) et un "pourquoi" : ce que cette réponse montre pour le poste visé.
+- a_ameliorer (1 à 3) : chacun contient la "question" de la recruteuse (copiée), la "reponse" du candidat
+  (extrait COPIÉ MOT POUR MOT) et "mieux" : ce qu'une meilleure réponse aurait contenu POUR CE POSTE,
+  de façon concrète, sans inventer de faits sur le parcours du candidat.
+- conseils (3) : chacun rattaché à un "critere" (pertinence, exemples, clarte ou adequation), en priorité
+  aux critères où tu as mis le moins de points, et aux exigences du poste visé. INTERDIT : un conseil
+  passe-partout qui ne mentionne ni une réponse du candidat ni une exigence du poste (« faites des
+  recherches sur l'entreprise », « soyez plus clair »...).
+- Ne cite jamais un passage incompréhensible (erreur de transcription). Les citations sont vérifiées :
+  une citation qui ne figure pas dans la transcription est supprimée.
+Adresse-toi directement au candidat avec « vous » dans TOUTES les phrases (jamais « le candidat » ni « il »). Réponds en français, uniquement avec un objet JSON :
 {{"criteres": {{"pertinence": {{"evalue": true, "points": 0, "justification": "..."}},
                "exemples": {{"evalue": true, "points": 0, "justification": "..."}},
                "clarte": {{"evalue": true, "points": 0, "justification": "..."}},
                "adequation": {{"evalue": true, "points": 0, "justification": "..."}}}},
 "message": "une phrase brève qui résume l'entretien",
 "deroulement": "rapport de 3 à 4 phrases : comment s'est passé l'entretien",
-"points_forts": ["..."],
-"a_ameliorer": ["..."],
-"conseils": ["3 conseils concrets et actionnables pour les prochains entretiens"]}}"""
+"points_forts": [{{"citation": "mots exacts du candidat", "pourquoi": "..."}}],
+"a_ameliorer": [{{"question": "question de la recruteuse", "reponse": "mots exacts du candidat", "mieux": "..."}}],
+"conseils": [{{"critere": "exemples", "conseil": "..."}}]}}"""
 
 
 class EntretienRefuse(Exception):
@@ -589,8 +600,69 @@ def bilan_entretien(offre, echanges, duree_secondes):
         "criteres": criteres,
         "message": message,
         "deroulement": str(donnees.get("deroulement", "")).strip()[:1200],
-        "points_forts": liste_de_textes(donnees.get("points_forts"), 4),
-        "a_ameliorer": liste_de_textes(donnees.get("a_ameliorer"), 4),
-        "conseils": liste_de_textes(donnees.get("conseils"), 4),
+        **remarques_reliees(donnees, echanges, criteres),
         "statistiques": stats,
     }, tokens
+
+
+# ---------- Remarques du bilan reliées à l'entretien (citations vérifiées) ----------
+
+def normaliser_pour_citation(texte):
+    """Minuscules, sans accents ni ponctuation : « Vous avez dit… » et « vous avez dit » se comparent."""
+    texte = unicodedata.normalize("NFKD", str(texte or "").lower())
+    texte = "".join(c for c in texte if not unicodedata.combining(c))
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", texte).split())
+
+
+def citation_verifiee(citation, texte_normalise, mots_min=3):
+    """Vrai si la citation (au moins 3 mots) figure telle quelle dans le texte (après normalisation)."""
+    c = normaliser_pour_citation(citation)
+    return len(c.split()) >= mots_min and f" {c} " in f" {texte_normalise} "
+
+
+def remarques_reliees(donnees, echanges, criteres):
+    """Points forts, points à améliorer et conseils, gardés SEULEMENT s'ils sont reliés à l'entretien.
+
+    - un point fort doit citer mot pour mot une réponse du candidat ;
+    - un point à améliorer doit citer une réponse du candidat (et la question, si elle est retrouvée) ;
+    - un conseil doit être rattaché à un critère du barème (on affiche ses points).
+    Le LLM peut inventer une citation : le serveur la cherche dans la transcription, sinon il l'écarte."""
+    candidat = normaliser_pour_citation(" ".join(e["texte"] for e in echanges if e["role"] == "candidat"))
+    recruteuse = normaliser_pour_citation(" ".join(e["texte"] for e in echanges if e["role"] == "recruteuse"))
+    liste = lambda cle: [x for x in donnees.get(cle, []) if isinstance(x, dict)] if isinstance(donnees.get(cle), list) else []
+    court = lambda x, n=300: str(x or "").strip().strip("«»\"“” ")[:n]
+
+    points_forts = []
+    for item in liste("points_forts"):
+        citation, pourquoi = court(item.get("citation")), court(item.get("pourquoi"))
+        if pourquoi and citation_verifiee(citation, candidat):
+            points_forts.append(f"« {citation} » : {pourquoi}")
+
+    a_ameliorer = []
+    for item in liste("a_ameliorer"):
+        question, reponse, mieux = court(item.get("question")), court(item.get("reponse")), court(item.get("mieux"))
+        if not mieux or not citation_verifiee(reponse, candidat, mots_min=2):
+            continue
+        if citation_verifiee(question, recruteuse):
+            a_ameliorer.append(f"À la question « {question} », vous avez répondu « {reponse} ». {mieux}")
+        else:
+            a_ameliorer.append(f"Vous avez répondu « {reponse} ». {mieux}")
+
+    par_cle = {cle: c for cle, c in zip(CRITERES, criteres)} if criteres else {}
+    conseils = []
+    for item in liste("conseils"):
+        cle, conseil = str(item.get("critere", "")).strip().lower(), court(item.get("conseil"))
+        if cle not in CRITERES or not conseil:
+            continue
+        c = par_cle.get(cle)
+        etiquette = (f"{CRITERES[cle][0]} ({c['points']}/{c['sur']})" if c and c.get("evalue")
+                     else CRITERES[cle][0])
+        conseils.append(f"{etiquette} : {conseil}")
+    if not conseils:
+        # Aucun conseil exploitable : on s'appuie sur le critère le plus faible et sa justification (vraie note)
+        evalues = [c for c in criteres if c.get("evalue") and c.get("justification")]
+        if evalues:
+            faible = min(evalues, key=lambda c: c["points"] / c["sur"])
+            conseils.append(f"Priorité : {faible['critere']} ({faible['points']}/{faible['sur']}) : {faible['justification']}")
+
+    return {"points_forts": points_forts[:3], "a_ameliorer": a_ameliorer[:3], "conseils": conseils[:3]}

@@ -297,8 +297,11 @@ def test_bilan_note_sur_100(connecte, app, monkeypatch):
     eid = connecte.post(f"/documents/{doc_id}/offres/OEM1/entretien/session").get_json()["entretien_id"]
     monkeypatch.setattr(ia, "appeler_llm", lambda message: ({
         "criteres": {"pertinence": {"points": 25, "justification": "a"}, "exemples": {"points": 24, "justification": "b"}, "clarte": {"points": 15, "justification": "c"}, "adequation": {"points": 14, "justification": "d"}}, "message": "Bon entretien, continuez ainsi.", "deroulement": "Entretien fluide.",
-        "points_forts": ["Exemples chiffrés"], "a_ameliorer": ["Motivation"],
-        "conseils": ["Préparez votre motivation.", "Chiffrez vos résultats."]}, 900))
+        "points_forts": [{"citation": "Une API Flask pour gérer 2 000 dossiers", "pourquoi": "Exemple chiffré."}],
+        "a_ameliorer": [{"question": "Quelle API avez-vous construite récemment ?", "reponse": "Une API Flask",
+                         "mieux": "Préciser votre rôle exact."}],
+        "conseils": [{"critere": "adequation", "conseil": "Reliez Flask aux besoins du poste."},
+                     {"critere": "exemples", "conseil": "Chiffrez vos résultats."}]}, 900))
     reponse = connecte.post(f"/documents/{doc_id}/offres/OEM1/entretien/{eid}/bilan",
                             json={"echanges": TRANSCRIPTION, "duree": 245}).get_json()
     bilan = reponse["bilan"]
@@ -416,7 +419,8 @@ def faux_bilan(monkeypatch, criteres, envoye=None):
         if envoye is not None:
             envoye.append(message)
         return {"criteres": criteres, "message": "Merci pour cet échange.", "deroulement": "Bref échange.",
-                "points_forts": [], "a_ameliorer": [], "conseils": ["Développez vos réponses."]}, 300
+                "points_forts": [], "a_ameliorer": [],
+                "conseils": [{"critere": "exemples", "conseil": "Développez vos réponses."}]}, 300
     monkeypatch.setattr(ia, "appeler_llm", faux)
 
 
@@ -433,7 +437,7 @@ def test_entretien_trop_court_non_note(app, monkeypatch):
     assert bilan["note"] is None and bilan["mention"] == "Non noté"
     assert bilan["criteres"] == []                       # pas de détail de note
     assert bilan["message"].startswith("Entretien trop court pour être noté (1 réponse en 0 min 36 s")
-    assert bilan["conseils"] == ["Développez vos réponses."]   # le retour et les conseils restent
+    assert bilan["conseils"] == ["Exemples concrets et résultats : Développez vos réponses."]  # les conseils restent
     assert "TROP COURT" in envoye[0]                     # le LLM est prévenu de ne pas parler de note
 
 
@@ -524,3 +528,63 @@ def test_session_renvoie_l_ouverture_et_la_relance(connecte, app, monkeypatch):
                             json={"sdp": "v=0 offre"}).get_json()
     assert "assistante DRH chez ACME" in reponse["ouverture"]
     assert reponse["relance"] == ia.CONSIGNE_RELANCE and reponse["delai_relance"] == 3
+
+
+# ---------- Remarques du bilan reliées à l'entretien ----------
+
+def test_remarques_citations_verifiees(app, monkeypatch):
+    """Une citation absente de la transcription (inventée par le LLM) est supprimée."""
+    faux_bilan_complet = {
+        "criteres": {"pertinence": {"points": 22}, "exemples": {"points": 12, "justification": "Peu d'exemples."},
+                     "clarte": {"points": 15}, "adequation": {"points": 14}},
+        "points_forts": [
+            {"citation": "Je suis développeur Python depuis 3 ans à Kinshasa", "pourquoi": "Expérience claire."},
+            {"citation": "J'ai dirigé une équipe de 50 personnes", "pourquoi": "Inventé : jamais dit."}],
+        "a_ameliorer": [
+            {"question": "Quelle API avez-vous construite récemment ?",
+             "reponse": "Une API Flask pour gérer 2 000 dossiers clients",
+             "mieux": "Préciser votre rôle et le résultat obtenu."},
+            {"question": "Parlez-moi d'un échec", "reponse": "Je n'ai jamais échoué de ma vie",
+             "mieux": "Inventé : jamais dit."}],
+        "conseils": [{"critere": "exemples", "conseil": "Préparez deux situations vécues avec la méthode STAR."},
+                     {"critere": "inconnu", "conseil": "Critère qui n'existe pas."},
+                     "Faites des recherches sur l'entreprise."],          # texte libre : refusé
+    }
+    monkeypatch.setattr(ia, "appeler_llm", lambda message: (faux_bilan_complet, 100))
+    with app.app_context():
+        bilan, _ = ia.bilan_entretien({"intitule": "Dev", "entreprise": "ACME"}, TRANSCRIPTION, 180)
+    assert bilan["points_forts"] == ["« Je suis développeur Python depuis 3 ans à Kinshasa » : Expérience claire."]
+    assert len(bilan["a_ameliorer"]) == 1
+    assert bilan["a_ameliorer"][0].startswith("À la question « Quelle API avez-vous construite récemment ? »")
+    assert "2 000 dossiers clients" in bilan["a_ameliorer"][0]
+    # Le conseil affiche le critère ET ses points : il est relié à la note de CET entretien
+    assert bilan["conseils"] == ["Exemples concrets et résultats (12/30) : "
+                                 "Préparez deux situations vécues avec la méthode STAR."]
+
+
+def test_conseil_de_secours_tire_du_critere_le_plus_faible(app, monkeypatch):
+    """Si le LLM ne donne aucun conseil exploitable, on s'appuie sur le critère le plus faible."""
+    monkeypatch.setattr(ia, "appeler_llm", lambda message: ({
+        "criteres": {"pertinence": {"points": 25, "justification": "Bonnes réponses."},
+                     "exemples": {"points": 8, "justification": "Aucun exemple chiffré dans vos réponses."},
+                     "clarte": {"points": 16, "justification": "Clair."},
+                     "adequation": {"points": 15, "justification": "Correct."}},
+        "conseils": ["Soyez plus clair."]}, 100))
+    with app.app_context():
+        bilan, _ = ia.bilan_entretien({"intitule": "Dev", "entreprise": "ACME"}, TRANSCRIPTION, 180)
+    assert bilan["conseils"] == ["Priorité : Exemples concrets et résultats (8/30) : "
+                                 "Aucun exemple chiffré dans vos réponses."]
+
+
+def test_citation_normalisee():
+    """La comparaison ignore la casse, les accents et la ponctuation, mais exige les vrais mots."""
+    texte = ia.normaliser_pour_citation("Je suis développeur Python depuis 3 ans, à Kinshasa !")
+    assert ia.citation_verifiee("je suis DEVELOPPEUR python", texte)
+    assert not ia.citation_verifiee("je suis développeur Java", texte)
+    assert not ia.citation_verifiee("Python", texte)                 # trop court pour prouver un lien
+
+
+def test_la_consigne_exige_des_remarques_reliees():
+    consigne = ia.CONSIGNE_BILAN
+    assert "COPIÉE MOT POUR MOT" in consigne and '"critere"' in consigne
+    assert "passe-partout" in consigne
