@@ -463,3 +463,39 @@ def test_version_du_prompt_identique_dans_le_site_et_l_api():
     """Le cache du site dépend de la version du prompt de l'API : les deux doivent suivre."""
     from app_web.config import Config
     assert Config.PITCH_PROMPT_VERSION == llm_reformulator.PROMPT_VERSION
+
+
+def test_pitch_affiche_apres_l_analyse(app, connecte, api_simulee):
+    """Après le classement des offres, la page propose le pitch ; après génération, on y revient."""
+    import csv
+    with app.app_context():
+        doc_id = deposer_cv(connecte)
+        with open(app.config["OFFRES_CSV"], "w", encoding="utf-8", newline="") as f:
+            ecrivain = csv.DictWriter(f, fieldnames=["reference", "intitule", "entreprise", "lieu", "description",
+                                                      "description_disponible", "url", "source"])
+            ecrivain.writeheader()
+            ecrivain.writerow({"reference": "OEM1", "intitule": "Développeur Python", "entreprise": "ACME",
+                               "lieu": "Kinshasa", "description": "Python Flask SQL", "description_disponible": "True",
+                               "url": "", "source": "mediacongo"})
+    page_offres = f"/documents/{doc_id}/offres"
+    connecte.post(page_offres)                                     # analyse (mode démo)
+    page = connecte.get(page_offres).get_data(as_text=True)
+    assert "Votre pitch audio" in page and "Générer mon pitch" in page
+
+    reponse = connecte.post(f"/documents/{doc_id}/pitch", data={"retour": page_offres})
+    assert reponse.headers["Location"].endswith(page_offres + "#pitch")   # retour sur la page d'analyse
+    page = connecte.get(page_offres).get_data(as_text=True)
+    assert "<audio" in page and PITCH.replace("'", "&#39;") in page
+
+    # Analyse détaillée : le même pitch y apparaît aussi
+    connecte.post(f"{page_offres}/OEM1")
+    assert "<audio" in connecte.get(f"{page_offres}/OEM1").get_data(as_text=True)
+
+
+def test_retour_vers_un_site_exterieur_refuse(app, connecte, api_simulee):
+    """Le champ « retour » ne peut pas renvoyer vers un autre site (redirection ouverte)."""
+    with app.app_context():
+        doc_id = deposer_cv(connecte)
+    for piege in ["https://pirate.example", "//pirate.example", "/documents/../\\pirate"]:
+        reponse = connecte.post(f"/documents/{doc_id}/pitch", data={"retour": piege})
+        assert reponse.headers["Location"].endswith(f"/documents/{doc_id}/pitch")

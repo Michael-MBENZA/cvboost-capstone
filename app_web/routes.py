@@ -318,6 +318,7 @@ def offres_compatibles(doc_id):
     return render_template(
         "offres.html", document=document, lignes=lignes, analyse=en_cache,
         nb_offres=len(offres), mode=ia.mode_actuel(),
+        pitch_cv=pitch.dernier_pitch(document, texte_cv), retour=request.path,  # pitch affiché après l'analyse
     )
 
 
@@ -349,6 +350,7 @@ def analyse_offre(doc_id, reference):
     return render_template(
         "analyse.html", document=document, offre=offre, analyse=en_cache,
         resultat=json.loads(en_cache.resultat) if en_cache else None, mode=ia.mode_actuel(),
+        pitch_cv=pitch.dernier_pitch(document, texte_cv), retour=request.path,  # pitch affiché après l'analyse
     )
 
 
@@ -471,6 +473,10 @@ def pitch_audio(doc_id):
                 pitch.generer(document, texte_cv)
             except pitch.PitchIndisponible as erreur:
                 flash(str(erreur), "danger")
+        # Retour sur la page d'analyse d'où vient le clic (adresses internes seulement : pas de redirection ouverte)
+        retour = request.form.get("retour", "")
+        if retour.startswith("/documents/") and "//" not in retour and "\\" not in retour:
+            return redirect(retour + "#pitch")
         return redirect(url_for("main.pitch_audio", doc_id=doc_id))  # POST -> GET (pas de double envoi)
     return render_template("pitch.html", document=document, pitch=existant)
 
