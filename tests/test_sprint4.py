@@ -377,10 +377,30 @@ def api_simulee(monkeypatch):
     return appels
 
 
-def test_bouton_pitch_dans_mes_cv(app, connecte):
+def ecrire_une_offre(app):
+    import csv
+    with open(app.config["OFFRES_CSV"], "w", encoding="utf-8", newline="") as f:
+        ecrivain = csv.DictWriter(f, fieldnames=["reference", "intitule", "entreprise", "lieu", "description",
+                                                  "description_disponible", "url", "source"])
+        ecrivain.writeheader()
+        ecrivain.writerow({"reference": "OEM1", "intitule": "Développeur Python", "entreprise": "ACME",
+                           "lieu": "Kinshasa", "description": "Python Flask SQL", "description_disponible": "True",
+                           "url": "", "source": "mediacongo"})
+
+
+def test_pitch_sur_la_page_de_simulation_d_entretien(app, connecte, api_simulee):
+    """Le pitch se prépare là où l'on s'entraîne : sur la page de simulation d'entretien (pas dans Mes CV)."""
     with app.app_context():
-        deposer_cv(connecte)
-    assert "Mon pitch audio" in connecte.get("/history").get_data(as_text=True)
+        doc_id = deposer_cv(connecte)
+        ecrire_une_offre(app)
+    page_entretien = f"/documents/{doc_id}/offres/OEM1/entretien"
+    page = connecte.get(page_entretien).get_data(as_text=True)
+    assert "Votre pitch audio" in page and "Générer mon pitch" in page
+    assert "Mon pitch audio" not in connecte.get("/history").get_data(as_text=True)   # plus dans Mes CV
+
+    reponse = connecte.post(f"/documents/{doc_id}/pitch", data={"retour": page_entretien})
+    assert reponse.headers["Location"].endswith(page_entretien + "#pitch")   # retour sur la simulation
+    assert "<audio" in connecte.get(page_entretien).get_data(as_text=True)
 
 
 def test_generer_puis_ecouter_le_pitch(app, connecte, api_simulee):

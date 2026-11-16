@@ -376,10 +376,16 @@ def entretien(doc_id, reference):
     if sans_bilan and not any(e["role"] == "candidat"
                               for e in ia.nettoyer_transcription(json.loads(sans_bilan.transcription or "[]"))):
         sans_bilan = None
+    # Pitch audio sur la page de simulation : préparer le « Présentez-vous » avant de parler à Amina
+    try:
+        pitch_cv = pitch.dernier_pitch(document, texte_du_cv(document))
+    except CVIllisible:
+        pitch_cv = None
     return render_template(
         "entretien.html", document=document, offre=offre_trouvee, sans_bilan=sans_bilan,
         precedents=[{"date": e.cree_le, "bilan": json.loads(e.bilan)} for e in precedents],
         duree_max=ia.DUREE_MAX_SECONDES, cle_presente=ia.mode_actuel() == "openai",
+        pitch_cv=pitch_cv, retour=request.path,
     )
 
 
