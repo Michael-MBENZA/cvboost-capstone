@@ -29,9 +29,14 @@
 
     // Comptage des questions : chaque réponse du candidat fait passer à la question suivante
     var nbReponses = 0;            // répliques du candidat
-    var consigneConclusion = null, delaiFin = 6;
+    var consigneConclusion = null, delaiFin = 5;
     var phaseFinale = false;       // le candidat a répondu à la dernière question : Amina conclut
     var aminaAConclu = false, dernierMotAmina = 0;
+    // Fin détectée aussi à la phrase de conclusion d'Amina (« l'entretien est terminé… votre bilan »),
+    // même si le comptage des réponses s'est décalé (réponse coupée en deux, transcription manquée...)
+    var CONCLUSION = /entretien est (maintenant )?termin|entretien est fini|recevoir (votre|son) bilan/i;
+    var conclusionEntendue = false, debutConclusion = 0;
+    var ATTENTE_MAX_CONCLUSION = 45000;   // filet : on termine au plus tard 45 s après le début de la conclusion
 
     var etat = "attente";          // attente | connexion | direct | fin
     var connexion = null, micro = null, canal = null, chrono = null;
@@ -106,12 +111,18 @@
                 if (nbReponses >= NB_QUESTIONS) phaseFinale = true;
             } else if (phaseFinale) {
                 aminaAConclu = true;        // Amina reprend la parole après la dernière réponse
+                if (!debutConclusion) debutConclusion = Date.now();
             }
             // Le numéro avance quand Amina enchaîne (pas pendant que le candidat répond)
             if (role === "recruteuse") afficherQuestion();
         }
         repliqueEnCours.texte += morceau;
         echanges[echanges.length - 1].texte = repliqueEnCours.texte.trim();
+        if (role === "recruteuse" && !conclusionEntendue && CONCLUSION.test(repliqueEnCours.texte)) {
+            conclusionEntendue = true;
+            if (!debutConclusion) debutConclusion = Date.now();
+            if (compteur) compteur.textContent = "Conclusion";
+        }
     }
 
     function recevoir(message) {
@@ -151,6 +162,7 @@
     // depuis quelques secondes et qu'Amina n'a rien dit, on lui envoie une consigne de relance (une fois par réponse).
     function relancerSiSilence() {
         if (!attendReponse || relanceEnvoyee || !consigneRelance || !canal || canal.readyState !== "open") return;
+        if (conclusionEntendue || (phaseFinale && aminaAConclu)) return;   // Amina a conclu : on ne la relance plus
         if (Date.now() - dernierMotCandidat < delaiRelance * 1000) return;
         // Après la dernière réponse : on demande à Amina de conclure au lieu de poser une autre question
         var consigne = phaseFinale && consigneConclusion ? consigneConclusion : consigneRelance;
@@ -159,10 +171,13 @@
         relanceEnvoyee = true;
     }
 
-    // Fin naturelle : Amina a conclu après la dernière réponse et se tait depuis quelques secondes
+    // Fin automatique : Amina a conclu (après la dernière réponse, ou on a entendu sa phrase de conclusion)
+    // et plus personne ne parle depuis quelques secondes -> on coupe et le bilan s'affiche.
+    // Un « merci, au revoir » du candidat ne bloque plus la fin ; filet de 45 s si quelqu'un continue de parler.
     function terminerSiConclu() {
-        if (!phaseFinale || !aminaAConclu || attendReponse) return;
-        if (Date.now() - dernierMotAmina >= delaiFin * 1000) terminer();
+        if (!conclusionEntendue && !(phaseFinale && aminaAConclu)) return;
+        var silence = Date.now() - Math.max(dernierMotAmina, dernierMotCandidat);
+        if (silence >= delaiFin * 1000 || Date.now() - debutConclusion >= ATTENTE_MAX_CONCLUSION) terminer();
     }
 
     function sauvegarder() {
@@ -210,7 +225,8 @@
         repliqueEnCours = null;
         secondes = 0;
         nbReponses = 0;
-        phaseFinale = aminaAConclu = false;
+        phaseFinale = aminaAConclu = conclusionEntendue = false;
+        debutConclusion = 0;
         afficherQuestion();
         boutonDemarrer.disabled = true;
         changerEtat("connexion");
@@ -240,7 +256,7 @@
                     consigneRelance = reponse.relance || null;
                     delaiRelance = reponse.delai_relance || 3;
                     consigneConclusion = reponse.conclusion || null;
-                    delaiFin = reponse.delai_fin || 6;
+                    delaiFin = reponse.delai_fin || 5;
                     attendReponse = false;
                     relanceEnvoyee = false;
                     return connexion.setRemoteDescription({ type: "answer", sdp: reponse.sdp });

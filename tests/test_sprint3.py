@@ -80,6 +80,7 @@ def test_nettoyer():
 import csv
 import io
 import json
+from pathlib import Path
 
 from app_web import ia
 from app_web.models import Analyse, Document
@@ -481,6 +482,11 @@ def test_entretien_en_6_questions_puis_conclusion(app, monkeypatch):
     assert "n'ajoute AUCUNE autre question" in consigne
     assert "6 questions" in envoye["session"]["input"][0]["content"][0]["text"]   # annoncé dès l'ouverture
     assert "Ne pose plus aucune question" in ia.CONSIGNE_CONCLUSION
+    # Phrase de fin fixe : le navigateur la reconnaît pour couper l'entretien et afficher le bilan
+    phrase = "L'entretien est terminé, vous allez recevoir votre bilan."
+    assert phrase in consigne and phrase in ia.CONSIGNE_CONCLUSION
+    js = (Path(__file__).resolve().parent.parent / "app_web" / "static" / "js" / "entretien.js").read_text("utf-8")
+    assert "entretien est (maintenant )?termin" in js and "recevoir (votre|son) bilan" in js
     assert ia.DUREE_MAX_SECONDES == 600
 
 

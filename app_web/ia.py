@@ -359,8 +359,10 @@ Déroulé :
 - une seule question à la fois ; ne coupe jamais le candidat au milieu d'une phrase ;
 - n'ajoute AUCUNE autre question et ne pose pas de sous-question : chaque réponse du candidat te fait
   passer à la question suivante (seule exception : s'il n'a pas été entendu, demande-lui de répéter) ;
-- après la réponse à la dernière question, réponds brièvement à ses éventuelles questions, remercie-le,
-  annonce que l'entretien est terminé et qu'il va recevoir son bilan, puis ne dis plus rien ;
+- après la réponse à la dernière question, réponds en une phrase à ses éventuelles questions, remercie-le,
+  puis termine OBLIGATOIREMENT par cette phrase exacte :
+  « L'entretien est terminé, vous allez recevoir votre bilan. »
+  Ensuite, ne dis plus rien et ne pose plus aucune question (la conversation sera coupée) ;
 - DÈS QUE LE CANDIDAT A FINI SA RÉPONSE ET MARQUE UNE PAUSE, RÉAGIS TOUT DE SUITE : ne reste jamais
   silencieuse après une réponse, n'attends pas qu'il te relance (il ne doit jamais avoir à dire « allô ») ;
 - garde un ton oral naturel et des tours de parole courts (comme dans l'ancienne version, préférée à l'écoute) ;
@@ -395,9 +397,11 @@ CONSIGNE_RELANCE = ("Le candidat a terminé sa réponse. Réagis maintenant à v
 DELAI_RELANCE_SECONDES = 3
 # Envoyée par le navigateur quand le candidat a répondu à la dernière question
 CONSIGNE_CONCLUSION = ("Le candidat a répondu à la dernière question. Ne pose plus aucune question : "
-                       "réponds brièvement s'il t'a posé une question, remercie-le, annonce que l'entretien "
-                       "est terminé et qu'il va recevoir son bilan, puis tais-toi.")
-DELAI_FIN_SECONDES = 6    # silence d'Amina après sa conclusion avant de terminer (la voix suit le texte)
+                       "réponds en une phrase s'il t'a posé une question, remercie-le, puis dis exactement : "
+                       "« L'entretien est terminé, vous allez recevoir votre bilan. » Ensuite, tais-toi.")
+# Le navigateur reconnaît cette phrase et coupe l'entretien dès que plus personne ne parle depuis ce délai
+# (5 s : le texte arrive un peu avant la voix, on laisse Amina finir sa phrase)
+DELAI_FIN_SECONDES = 5
 
 
 def liste_questions():
