@@ -264,6 +264,8 @@ TRANSCRIPTION = [
     {"role": "candidat", "texte": "Je suis développeur Python depuis 3 ans à Kinshasa."},
     {"role": "recruteuse", "texte": "Quelle API avez-vous construite récemment ?"},
     {"role": "candidat", "texte": "Une API Flask pour gérer 2 000 dossiers clients par mois."},
+    {"role": "recruteuse", "texte": "Pourquoi ce poste vous intéresse-t-il ?"},
+    {"role": "candidat", "texte": "Je veux travailler sur des produits utilisés par beaucoup de clients."},
 ]
 
 
@@ -279,10 +281,12 @@ def test_session_vocale_echange_sdp(connecte, app, monkeypatch):
     appels = session_ok(monkeypatch)
     page = connecte.get(f"/documents/{doc_id}/offres/OEM1/entretien").get_data(as_text=True)
     assert "Démarrer l'entretien" in page
+    assert "Question 1 / 6" in page and "6 questions" in page   # compteur de questions, plus de minuteur
     reponse = connecte.post(f"/documents/{doc_id}/offres/OEM1/entretien/session",
                             json={"sdp": "v=0 offre-du-navigateur"}).get_json()
     assert reponse["sdp"] == "v=0 reponse-sdp-openai"    # le navigateur reçoit le SDP, jamais la clé
-    assert reponse["duree_max"] == 300                    # 5 minutes
+    assert reponse["duree_max"] == 600                    # limite de sécurité discrète : 10 minutes
+    assert reponse["nb_questions"] == 6
     assert "sk-test" not in str(reponse)
     assert "Python" in appels[0][0]                       # le CV a bien été extrait au déclenchement
     assert appels[0][2] == "v=0 offre-du-navigateur"
@@ -308,12 +312,12 @@ def test_bilan_note_sur_100(connecte, app, monkeypatch):
     assert bilan["note"] == 78 and bilan["mention"] == "Très bien"
     assert bilan["message"].startswith("Bon entretien") and len(bilan["conseils"]) == 2
     stats = bilan["statistiques"]                       # calculées par le serveur, pas par le LLM
-    assert stats["reponses_candidat"] == 2 and stats["interventions_recruteuse"] == 2
-    assert stats["duree_secondes"] == 245 and stats["mots_prononces"] == 20
+    assert stats["reponses_candidat"] == 3 and stats["interventions_recruteuse"] == 3
+    assert stats["duree_secondes"] == 245 and stats["mots_prononces"] == 31
     with app.app_context():
         entretien = Entretien.query.one()
         assert entretien.duree_secondes == 245 and entretien.tokens == 900
-        assert len(json.loads(entretien.transcription)) == 4
+        assert len(json.loads(entretien.transcription)) == 6
     # La page affiche ensuite l'entretien dans l'historique
     page = connecte.get(f"/documents/{doc_id}/offres/OEM1/entretien").get_data(as_text=True)
     assert "78 / 100" in page
@@ -340,7 +344,7 @@ def test_sauvegarde_en_cours_puis_bilan_meme_si_la_page_a_perdu_la_transcription
 
     # Pendant l'entretien : sauvegarde sans bilan
     r = connecte.post(f"{base}/{eid}/bilan", json={"echanges": TRANSCRIPTION, "duree": 120, "final": False})
-    assert r.get_json() == {"sauvegarde": 4}
+    assert r.get_json() == {"sauvegarde": 6}
     with app.app_context():
         assert Entretien.query.one().bilan is None
 
@@ -355,9 +359,9 @@ def test_sauvegarde_en_cours_puis_bilan_meme_si_la_page_a_perdu_la_transcription
 
 def test_statistiques_entretien():
     stats = ia.statistiques_entretien(TRANSCRIPTION, 60)
-    assert stats["reponses_candidat"] == 2
-    assert stats["mots_par_reponse"] == 10          # 20 mots en 2 réponses
-    assert stats["mots_par_minute"] == 20
+    assert stats["reponses_candidat"] == 3
+    assert stats["mots_par_reponse"] == 10          # 31 mots en 3 réponses
+    assert stats["mots_par_minute"] == 31
     assert 0 < stats["part_de_parole_pct"] < 100
 
 
@@ -436,17 +440,48 @@ def test_entretien_trop_court_non_note(app, monkeypatch):
         bilan, _ = ia.bilan_entretien({"intitule": "Dev", "entreprise": "ACME"}, TRANSCRIPTION[:2], 36)
     assert bilan["note"] is None and bilan["mention"] == "Non noté"
     assert bilan["criteres"] == []                       # pas de détail de note
-    assert bilan["message"].startswith("Entretien trop court pour être noté (1 réponse en 0 min 36 s")
+    assert bilan["message"].startswith("Entretien trop court pour être noté (1 réponse sur 6 questions")
     assert bilan["conseils"] == ["Exemples concrets et résultats : Développez vos réponses."]  # les conseils restent
     assert "TROP COURT" in envoye[0]                     # le LLM est prévenu de ne pas parler de note
 
 
-def test_assez_long_avec_3_reponses_ou_2_minutes():
+def test_assez_long_avec_3_reponses_sur_6():
+    """La note dépend du nombre de réponses (3 sur 6 questions), plus de la durée."""
     trois = {"reponses_candidat": 3, "duree_secondes": 50}
-    longue = {"reponses_candidat": 1, "duree_secondes": 120}
-    courte = {"reponses_candidat": 2, "duree_secondes": 119}
-    assert ia.entretien_assez_long(trois) and ia.entretien_assez_long(longue)
-    assert not ia.entretien_assez_long(courte)
+    longue_mais_une_reponse = {"reponses_candidat": 1, "duree_secondes": 400}
+    assert ia.entretien_assez_long(trois)
+    assert not ia.entretien_assez_long(longue_mais_une_reponse)
+
+
+def test_entretien_en_6_questions_puis_conclusion(app, monkeypatch):
+    """Amina reçoit les 6 questions dans l'ordre, sans question en plus, puis conclut."""
+    envoye = {}
+
+    class FausseReponse:
+        ok = True
+
+        def json(self):
+            return {"transport": {"sdp": "v=0 reponse"}}
+
+    def faux_post(url, timeout, headers, json):
+        envoye.update(json)
+        return FausseReponse()
+
+    import requests
+    monkeypatch.setattr(requests, "post", faux_post)
+    app.config["OPENAI_API_KEY"] = "sk-test-factice"
+    offre = {"intitule": "Comptable", "entreprise": "ACME", "lieu": "Kinshasa", "reference": "R1",
+             "description": "Tenue de la comptabilité.", "description_disponible": True}
+    with app.app_context():
+        ia.creer_session_vocale("CV de test", offre, "v=0 offre")
+    consigne = envoye["session"]["instructions"]
+    assert ia.NB_QUESTIONS == 6 and "EXACTEMENT 6 questions" in consigne
+    for numero, question in enumerate(ia.QUESTIONS_ENTRETIEN, 1):
+        assert f"{numero}. {question}" in consigne
+    assert "n'ajoute AUCUNE autre question" in consigne
+    assert "6 questions" in envoye["session"]["input"][0]["content"][0]["text"]   # annoncé dès l'ouverture
+    assert "Ne pose plus aucune question" in ia.CONSIGNE_CONCLUSION
+    assert ia.DUREE_MAX_SECONDES == 600
 
 
 def test_critere_non_evalue_ne_penalise_pas(app, monkeypatch):
@@ -528,6 +563,7 @@ def test_session_renvoie_l_ouverture_et_la_relance(connecte, app, monkeypatch):
                             json={"sdp": "v=0 offre"}).get_json()
     assert "assistante DRH chez ACME" in reponse["ouverture"]
     assert reponse["relance"] == ia.CONSIGNE_RELANCE and reponse["delai_relance"] == 3
+    assert reponse["conclusion"] == ia.CONSIGNE_CONCLUSION and reponse["delai_fin"] == ia.DELAI_FIN_SECONDES
 
 
 # ---------- Remarques du bilan reliées à l'entretien ----------

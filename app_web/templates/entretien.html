@@ -14,19 +14,20 @@
 <section class="bloc entretien-vocal" id="entretien"
          data-session="{{ url_for('main.session_entretien', doc_id=document.id, reference=offre.reference) }}"
          data-bilan="{{ url_for('main.bilan_entretien', doc_id=document.id, reference=offre.reference, entretien_id=0) }}"
-         data-csrf="{{ csrf_token() }}" data-duree-max="{{ duree_max }}">
+         data-csrf="{{ csrf_token() }}" data-duree-max="{{ duree_max }}" data-nb-questions="{{ nb_questions }}">
 
     <div class="entretien-tete">
         <div>
             <h2>Amina, recruteuse</h2>
             <p class="discret" id="etat">Prête quand vous l'êtes.</p>
         </div>
-        <div class="minuteur" id="minuteur">{{ '%d:%02d' | format(duree_max // 60, duree_max % 60) }}</div>
+        <div class="minuteur" id="compteur">Question 1 / {{ nb_questions }}</div>
     </div>
 
     {% if cle_presente %}
-        <p>Amina a lu votre CV et l'annonce. Elle va vous poser ses questions <strong>à voix haute</strong> pendant
-           <strong>5 minutes</strong> : répondez simplement en parlant, comme lors d'un vrai entretien.
+        <p>Amina a lu votre CV et l'annonce. Elle va vous poser <strong>{{ nb_questions }} questions</strong>
+           <strong>à voix haute</strong>, comme lors d'un vrai premier entretien RH : répondez simplement en parlant,
+           prenez le temps qu'il faut. Après votre dernière réponse, elle conclut et l'entretien se termine tout seul.
            Votre navigateur va vous demander l'accès au micro. À la fin, vous recevez une note sur 100.</p>
         <div class="filtre-actions">
             <button type="button" class="btn" id="demarrer">Démarrer l'entretien</button>

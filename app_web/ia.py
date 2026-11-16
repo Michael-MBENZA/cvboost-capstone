@@ -310,45 +310,65 @@ def cle_detail(texte_cv, offre):
 # 2. Le site la transmet à l'API « live » d'OpenAI avec la consigne de la recruteuse (CV + offre) :
 #    la clé OpenAI reste sur le serveur. OpenAI répond par un « SDP » que le navigateur utilise pour se
 #    connecter directement : micro -> recruteuse IA -> haut-parleur.
-# 3. À la fin (5 minutes ou bouton), le navigateur renvoie la transcription ; le serveur demande
+# 3. À la fin (6 questions posées, bouton, ou limite de sécurité de 10 min), le navigateur renvoie la transcription ; le serveur demande
 #    un bilan noté sur 100 au LLM.
 
 URL_SESSION_VOCALE = "https://api.openai.com/v1/live/sessions"
 MODELE_VOCAL = os.getenv("OPENAI_MODELE_VOCAL", "gpt-live-1")            # conversation vocale naturelle
 MODELE_ASSISTANT = os.getenv("OPENAI_MODELE_ASSISTANT", "gpt-5.6-terra")  # réfléchit aux questions
 VOIX = os.getenv("VOIX_ENTRETIEN", "")  # vide = voix par défaut du modèle (celle de l'ancienne version)
-DUREE_MAX_SECONDES = 5 * 60
+# L'entretien se compte en QUESTIONS (comme un vrai premier entretien RH), pas en minutes :
+# Amina pose ces 6 questions dans l'ordre, puis conclut ; l'entretien se termine alors tout seul.
+QUESTIONS_ENTRETIEN = [
+    "Présentez-vous en quelques minutes.",
+    "Pourquoi ce poste et notre entreprise vous intéressent-ils ?",
+    "Parlez-moi d'une réalisation concrète de votre parcours : quel était votre rôle exact et quel "
+    "a été le résultat ? (choisis-la à partir du CV)",
+    "Racontez une situation difficile que vous avez vécue au travail ou pendant vos études, "
+    "et comment vous l'avez gérée.",
+    "Une mise en situation liée aux missions du poste (invente un cas réaliste à partir de l'offre) : "
+    "comment vous y prendriez-vous ?",
+    "Avez-vous des questions à nous poser ?",
+]
+NB_QUESTIONS = len(QUESTIONS_ENTRETIEN)
+# Limite de sécurité discrète (non affichée) : coupe un entretien oublié, car chaque minute de voix coûte
+DUREE_MAX_SECONDES = 10 * 60
 LIMITE_PAR_HEURE = 6                    # entretiens par utilisateur et par heure (chaque minute coûte)
 MIN_REPONSES_BILAN = 1                  # en dessous : pas de bilan du tout (rien n'a été entendu)
 # Pour recevoir une NOTE, l'entretien doit être assez long : on ne juge pas quelqu'un sur une présentation.
 # En dessous, le bilan donne un retour et des conseils, mais « Non noté ».
-MIN_REPONSES_NOTE = 3                   # au moins 3 réponses du candidat...
-MIN_DUREE_NOTE = 120                    # ... ou au moins 2 minutes d'échange
+MIN_REPONSES_NOTE = 3                   # au moins 3 réponses sur les 6 questions
 MIN_CRITERES_EVALUES = 2                # une note calculée sur un seul critère ne voudrait rien dire
 
 CONSIGNE_RECRUTEUSE = """Tu es Amina, assistante DRH chez {entreprise}, bienveillante mais exigeante.
-Tu reçois le candidat pour un entretien d'embauche au poste ci-dessous, à voix haute, pendant environ
-5 minutes, en français. Tu représentes {entreprise} : présente-toi toujours comme assistante DRH de
+Tu reçois le candidat pour un premier entretien d'embauche au poste ci-dessous, à voix haute, en
+français. Tu représentes {entreprise} : présente-toi toujours comme assistante DRH de
 {entreprise} (jamais comme une recruteuse « à Kinshasa », ni comme une intelligence artificielle).
 
 Poste visé : {poste}
 
 {contexte}
 
+L'entretien compte EXACTEMENT {nb_questions} questions, à poser dans cet ordre (reformule-les à l'oral
+avec tes mots, en les adaptant au CV et au poste) :
+{questions}
+
 Déroulé :
 - commence par dire bonjour et te présenter (Amina, assistante DRH chez {entreprise}, le poste
-  pour lequel tu reçois le candidat), puis invite le candidat à se présenter ;
+  pour lequel tu reçois le candidat), puis pose la question 1 ;
 - une seule question à la fois ; ne coupe jamais le candidat au milieu d'une phrase ;
+- n'ajoute AUCUNE autre question et ne pose pas de sous-question : chaque réponse du candidat te fait
+  passer à la question suivante (seule exception : s'il n'a pas été entendu, demande-lui de répéter) ;
+- après la réponse à la dernière question, réponds brièvement à ses éventuelles questions, remercie-le,
+  annonce que l'entretien est terminé et qu'il va recevoir son bilan, puis ne dis plus rien ;
 - DÈS QUE LE CANDIDAT A FINI SA RÉPONSE ET MARQUE UNE PAUSE, RÉAGIS TOUT DE SUITE : ne reste jamais
   silencieuse après une réponse, n'attends pas qu'il te relance (il ne doit jamais avoir à dire « allô ») ;
 - garde un ton oral naturel et des tours de parole courts (comme dans l'ancienne version, préférée à l'écoute) ;
 - avant d'enchaîner, montre que tu as écouté : reprends en quelques mots un élément de sa réponse,
-  puis rebondis (rôle exact, réalisations, résultats chiffrés) ;
-- si la réponse est floue ou si tu n'as pas bien entendu, demande poliment de préciser ou de répéter ;
-- alterne motivation, parcours, compétences demandées par le poste et mises en situation ;
-- ne présume jamais qu'une expérience est vraie si elle n'apparaît pas au CV : si l'information manque, demande ;
+  puis pose la question suivante ;
+- ne présume jamais qu'une expérience est vraie si elle n'apparaît pas au CV ;
 - vouvoie toujours le candidat (« vous »), jamais de tutoiement ;
-- ne donne pas de note pendant l'entretien ; à la fin, remercie le candidat.
+- ne donne pas de note pendant l'entretien.
 Tu parles UNIQUEMENT en français, même si le candidat utilise une autre langue."""
 
 # Ouverture : sans cela, le modèle attend que le candidat parle. Méthode documentée par OpenAI
@@ -363,8 +383,8 @@ def nom_entreprise(offre):
 def consigne_ouverture(offre):
     return (f"Commence l'entretien maintenant, sans attendre que le candidat parle : dis bonjour, présente-toi "
             f"en une ou deux phrases (« Amina, assistante DRH chez {nom_entreprise(offre)} », et le poste "
-            f"« {offre['intitule']} »), puis invite le candidat à se présenter en le vouvoyant, "
-            f"et tais-toi pour lui laisser la parole.")
+            f"« {offre['intitule']} »), annonce que l'entretien compte {NB_QUESTIONS} questions, puis pose "
+            f"la question 1 (le candidat se présente) en le vouvoyant, et tais-toi pour lui laisser la parole.")
 
 
 # Relance : l'API « live » n'a pas de réglage de fin de tour. Si Amina reste silencieuse après une réponse,
@@ -373,6 +393,15 @@ CONSIGNE_RELANCE = ("Le candidat a terminé sa réponse. Réagis maintenant à v
                     "reprends en quelques mots un élément de sa réponse, puis pose ta question suivante. "
                     "Ne reste pas silencieuse.")
 DELAI_RELANCE_SECONDES = 3
+# Envoyée par le navigateur quand le candidat a répondu à la dernière question
+CONSIGNE_CONCLUSION = ("Le candidat a répondu à la dernière question. Ne pose plus aucune question : "
+                       "réponds brièvement s'il t'a posé une question, remercie-le, annonce que l'entretien "
+                       "est terminé et qu'il va recevoir son bilan, puis tais-toi.")
+DELAI_FIN_SECONDES = 6    # silence d'Amina après sa conclusion avant de terminer (la voix suit le texte)
+
+
+def liste_questions():
+    return "\n".join(f"{i}. {q}" for i, q in enumerate(QUESTIONS_ENTRETIEN, 1))
 
 CONSIGNE_ASSISTANT = ("Aide la recruteuse à préparer des questions pertinentes à partir du CV et du poste. "
                       "Ne crée aucun fait absent du CV. Rédige toujours en français.")
@@ -451,6 +480,7 @@ def creer_session_vocale(texte_cv, offre, sdp):
             entreprise=nom_entreprise(offre),
             poste=f"{offre['intitule']} — {offre['entreprise']} ({offre['lieu']})",
             contexte=contexte_entretien(texte_cv, offre),
+            nb_questions=NB_QUESTIONS, questions=liste_questions(),
         ),
         "input": [{"type": "message", "role": "developer",
                    "content": [{"type": "input_text", "text": consigne_ouverture(offre)}]}],
@@ -529,7 +559,7 @@ def statistiques_entretien(echanges, duree_secondes):
 
 def entretien_assez_long(stats):
     """Assez d'échanges pour juger le candidat ? (sinon : bilan « Non noté »)"""
-    return stats["reponses_candidat"] >= MIN_REPONSES_NOTE or stats["duree_secondes"] >= MIN_DUREE_NOTE
+    return stats["reponses_candidat"] >= MIN_REPONSES_NOTE
 
 
 def lire_critere(detail, maximum):
@@ -588,9 +618,9 @@ def bilan_entretien(offre, echanges, duree_secondes):
         criteres = []   # trop court : un détail de note n'aurait pas de sens
     message = str(donnees.get("message", "")).strip()[:300]
     if note is None:
-        raison = (f"Entretien trop court pour être noté ({stats['reponses_candidat']} réponse"
-                  f"{'s' if stats['reponses_candidat'] > 1 else ''} en {minutes} min {secondes:02d} s ; "
-                  f"il faut au moins {MIN_REPONSES_NOTE} réponses ou {MIN_DUREE_NOTE // 60} minutes)."
+        raison = (f"Entretien trop court pour être noté ({min(stats['reponses_candidat'], NB_QUESTIONS)} "
+                  f"réponse{'s' if stats['reponses_candidat'] > 1 else ''} sur {NB_QUESTIONS} questions ; "
+                  f"il faut au moins {MIN_REPONSES_NOTE} réponses)."
                   if not assez_long else
                   "Pas assez d'éléments pour une note : la plupart des critères n'ont pas pu être observés.")
         message = f"{raison} {message}".strip()

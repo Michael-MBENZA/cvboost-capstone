@@ -6,7 +6,10 @@
 //  3. La transcription arrive par petits morceaux sur un canal de données ; on les assemble en répliques
 //     et on les sauvegarde sur le serveur toutes les 20 secondes. Elle n'est PAS affichée à l'écran
 //     (comme dans un vrai entretien, on écoute sans lire) : elle sert seulement au bilan.
-//  4. À 5 minutes (ou au clic sur « Terminer »), on coupe et on demande le bilan noté au site.
+//  4. L'entretien se compte en QUESTIONS (6) : on compte les réponses du candidat et on affiche
+//     « Question 2 / 6 ». Après la dernière réponse, Amina conclut ; dès qu'elle se tait, l'entretien
+//     se termine tout seul et on demande le bilan noté. Le bouton « Terminer » reste possible, et une
+//     limite de sécurité discrète (10 min, non affichée) coupe un entretien oublié.
 (function () {
     "use strict";
 
@@ -17,11 +20,18 @@
     var boutonTerminer = document.getElementById("terminer");
     var boutonRecuperer = document.getElementById("recuperer-bilan");
     var etatTexte = document.getElementById("etat");
-    var minuteur = document.getElementById("minuteur");
+    var compteur = document.getElementById("compteur");
     var zoneErreur = document.getElementById("erreur");
     var zoneBilan = document.getElementById("bilan");
     var voix = document.getElementById("voix");
-    var DUREE_MAX = parseInt(zone.dataset.dureeMax, 10);
+    var DUREE_MAX = parseInt(zone.dataset.dureeMax, 10);          // limite de sécurité (non affichée)
+    var NB_QUESTIONS = parseInt(zone.dataset.nbQuestions, 10) || 6;
+
+    // Comptage des questions : chaque réponse du candidat fait passer à la question suivante
+    var nbReponses = 0;            // répliques du candidat
+    var consigneConclusion = null, delaiFin = 6;
+    var phaseFinale = false;       // le candidat a répondu à la dernière question : Amina conclut
+    var aminaAConclu = false, dernierMotAmina = 0;
 
     var etat = "attente";          // attente | connexion | direct | fin
     var connexion = null, micro = null, canal = null, chrono = null;
@@ -59,10 +69,10 @@
         zoneErreur.textContent = message || "";
     }
 
-    function afficherTemps() {
-        var restant = Math.max(0, DUREE_MAX - secondes);
-        var m = Math.floor(restant / 60), s = restant % 60;
-        minuteur.textContent = m + ":" + (s < 10 ? "0" : "") + s;
+    function afficherQuestion() {
+        if (!compteur) return;
+        compteur.textContent = phaseFinale && aminaAConclu ? "Conclusion"
+            : "Question " + Math.min(nbReponses + 1, NB_QUESTIONS) + " / " + NB_QUESTIONS;
     }
 
     function urlBilan(id) {
@@ -86,10 +96,19 @@
             relanceEnvoyee = false;
         } else {                            // Amina parle : plus besoin de la relancer
             attendReponse = false;
+            dernierMotAmina = Date.now();
         }
         if (!repliqueEnCours || repliqueEnCours.role !== role) {
             repliqueEnCours = { role: role, texte: "" };
             echanges.push({ role: role, texte: "" });
+            if (role === "candidat") {
+                nbReponses++;
+                if (nbReponses >= NB_QUESTIONS) phaseFinale = true;
+            } else if (phaseFinale) {
+                aminaAConclu = true;        // Amina reprend la parole après la dernière réponse
+            }
+            // Le numéro avance quand Amina enchaîne (pas pendant que le candidat répond)
+            if (role === "recruteuse") afficherQuestion();
         }
         repliqueEnCours.texte += morceau;
         echanges[echanges.length - 1].texte = repliqueEnCours.texte.trim();
@@ -133,9 +152,17 @@
     function relancerSiSilence() {
         if (!attendReponse || relanceEnvoyee || !consigneRelance || !canal || canal.readyState !== "open") return;
         if (Date.now() - dernierMotCandidat < delaiRelance * 1000) return;
+        // Après la dernière réponse : on demande à Amina de conclure au lieu de poser une autre question
+        var consigne = phaseFinale && consigneConclusion ? consigneConclusion : consigneRelance;
         canal.send(JSON.stringify({ type: "session.commentary.append", event_id: "relance-" + Date.now(),
-                                    delegation_id: null, content: consigneRelance }));
+                                    delegation_id: null, content: consigne }));
         relanceEnvoyee = true;
+    }
+
+    // Fin naturelle : Amina a conclu après la dernière réponse et se tait depuis quelques secondes
+    function terminerSiConclu() {
+        if (!phaseFinale || !aminaAConclu || attendReponse) return;
+        if (Date.now() - dernierMotAmina >= delaiFin * 1000) terminer();
     }
 
     function sauvegarder() {
@@ -154,10 +181,10 @@
             boutonTerminer.hidden = false;
             chrono = setInterval(function () {
                 secondes++;
-                afficherTemps();
                 if (secondes % 20 === 0) sauvegarder();   // rien n'est perdu si la connexion coupe
                 relancerSiSilence();
-                if (secondes >= DUREE_MAX) terminer();
+                terminerSiConclu();
+                if (secondes >= DUREE_MAX) terminer();    // limite de sécurité discrète
             }, 1000);
         } else if (etat === "connexion") {
             etatTexte.textContent = "Connexion à la recruteuse…";
@@ -182,7 +209,9 @@
         echanges = [];
         repliqueEnCours = null;
         secondes = 0;
-        afficherTemps();
+        nbReponses = 0;
+        phaseFinale = aminaAConclu = false;
+        afficherQuestion();
         boutonDemarrer.disabled = true;
         changerEtat("connexion");
 
@@ -210,6 +239,8 @@
                     consigneOuverture = reponse.ouverture;
                     consigneRelance = reponse.relance || null;
                     delaiRelance = reponse.delai_relance || 3;
+                    consigneConclusion = reponse.conclusion || null;
+                    delaiFin = reponse.delai_fin || 6;
                     attendReponse = false;
                     relanceEnvoyee = false;
                     return connexion.setRemoteDescription({ type: "answer", sdp: reponse.sdp });

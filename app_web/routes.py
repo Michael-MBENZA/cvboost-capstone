@@ -384,7 +384,8 @@ def entretien(doc_id, reference):
     return render_template(
         "entretien.html", document=document, offre=offre_trouvee, sans_bilan=sans_bilan,
         precedents=[{"date": e.cree_le, "bilan": json.loads(e.bilan)} for e in precedents],
-        duree_max=ia.DUREE_MAX_SECONDES, cle_presente=ia.mode_actuel() == "openai",
+        duree_max=ia.DUREE_MAX_SECONDES, nb_questions=ia.NB_QUESTIONS,
+        cle_presente=ia.mode_actuel() == "openai",
         pitch_cv=pitch_cv, retour=request.path,
     )
 
@@ -412,7 +413,9 @@ def session_entretien(doc_id, reference):
     db.session.commit()
     return jsonify(sdp=sdp_reponse, entretien_id=nouvel.id, duree_max=ia.DUREE_MAX_SECONDES,
                    ouverture=ia.consigne_ouverture(offre_trouvee),
-                   relance=ia.CONSIGNE_RELANCE, delai_relance=ia.DELAI_RELANCE_SECONDES)
+                   relance=ia.CONSIGNE_RELANCE, delai_relance=ia.DELAI_RELANCE_SECONDES,
+                   nb_questions=ia.NB_QUESTIONS, conclusion=ia.CONSIGNE_CONCLUSION,
+                   delai_fin=ia.DELAI_FIN_SECONDES)
 
 
 @bp.route("/documents/<int:doc_id>/offres/<reference>/entretien/<int:entretien_id>/bilan", methods=["POST"])
