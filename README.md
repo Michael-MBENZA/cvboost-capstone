@@ -1,5 +1,16 @@
 # Projet-Capstone-Final-CVBoost-
 
+## Application en ligne
+
+| Service | Adresse |
+
+| Site CVBoost (Flask) | https://cvboostmichael.online |
+
+
+
+
+
+
 Contexte
 La startup TalentIA commercialise sa plateforme phare CVBoost. Après plusieurs mois de développement et d'expérimentations techniques, l'entreprise souhaite unifier l'ensemble des briques de l'application en une solution globale, performante, industrielle et prête pour la production.
 
