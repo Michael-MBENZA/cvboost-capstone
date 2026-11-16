@@ -34,11 +34,5 @@ class Config:
     # Offres d'emploi réelles préparées au Sprint 2 (scraping + nettoyage Pandas)
     OFFRES_CSV = os.path.join(BASE_DIR, "data", "processed", "jobs_clean.csv")
 
-    # Pitch audio (Sprint 4) : le site appelle l'API FastAPI /speak-smart (api_service/).
-    # En local : http://127.0.0.1:8000 ; dans Docker : http://api:8000 (réseau interne, docker-compose.yml).
-    API_PITCH_URL = os.getenv("API_PITCH_URL", "http://127.0.0.1:8000")
-    API_PITCH_CLE = os.getenv("API_PITCH_CLE", "")  # même valeur que l'API (en-tête X-API-Key), lue dans .env
-    PITCH_PROMPT_VERSION = "v2"  # suivre api_service/services/llm_reformulator.PROMPT_VERSION (cache du site)
-
     # Production : site derrière le proxy HTTPS Caddy (docker-compose.prod.yml met DERRIERE_PROXY=1)
     DERRIERE_PROXY = os.getenv("DERRIERE_PROXY", "") == "1"

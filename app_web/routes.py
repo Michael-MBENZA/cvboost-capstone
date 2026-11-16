@@ -4,14 +4,14 @@ import os
 import uuid
 
 from flask import (
-    Blueprint, render_template, redirect, url_for, flash, request, current_app, abort, jsonify, send_file
+    Blueprint, render_template, redirect, url_for, flash, request, current_app, abort, jsonify
 )
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 
-from . import db, ia, pitch
+from . import db, ia
 from .extraction import CVIllisible, extraire_texte
-from .models import User, Document, Entretien, Pitch
+from .models import User, Document, Entretien
 
 bp = Blueprint("main", __name__)
 
@@ -318,7 +318,6 @@ def offres_compatibles(doc_id):
     return render_template(
         "offres.html", document=document, lignes=lignes, analyse=en_cache,
         nb_offres=len(offres), mode=ia.mode_actuel(),
-        pitch_cv=pitch.dernier_pitch(document, texte_cv), retour=request.path,  # pitch affiché après l'analyse
     )
 
 
@@ -350,7 +349,6 @@ def analyse_offre(doc_id, reference):
     return render_template(
         "analyse.html", document=document, offre=offre, analyse=en_cache,
         resultat=json.loads(en_cache.resultat) if en_cache else None, mode=ia.mode_actuel(),
-        pitch_cv=pitch.dernier_pitch(document, texte_cv), retour=request.path,  # pitch affiché après l'analyse
     )
 
 
@@ -376,17 +374,11 @@ def entretien(doc_id, reference):
     if sans_bilan and not any(e["role"] == "candidat"
                               for e in ia.nettoyer_transcription(json.loads(sans_bilan.transcription or "[]"))):
         sans_bilan = None
-    # Pitch audio sur la page de simulation : préparer le « Présentez-vous » avant de parler à Amina
-    try:
-        pitch_cv = pitch.dernier_pitch(document, texte_du_cv(document))
-    except CVIllisible:
-        pitch_cv = None
     return render_template(
         "entretien.html", document=document, offre=offre_trouvee, sans_bilan=sans_bilan,
         precedents=[{"date": e.cree_le, "bilan": json.loads(e.bilan)} for e in precedents],
         duree_max=ia.DUREE_MAX_SECONDES, nb_questions=ia.NB_QUESTIONS,
         cle_presente=ia.mode_actuel() == "openai",
-        pitch_cv=pitch_cv, retour=request.path,
     )
 
 
@@ -460,46 +452,6 @@ def bilan_entretien(doc_id, reference, entretien_id):
     en_cours.tokens = tokens
     db.session.commit()
     return jsonify(bilan=bilan)
-
-
-# ---------- Pitch audio (Sprint 4) : le site appelle l'API FastAPI /speak-smart ----------
-
-@bp.route("/documents/<int:doc_id>/pitch", methods=["GET", "POST"])
-@login_required
-def pitch_audio(doc_id):
-    """GET : affiche le pitch déjà généré. POST (bouton) : demande un pitch à l'API."""
-    document = mon_document(doc_id)
-    try:
-        texte_cv = texte_du_cv(document)  # extraction pypdf / python-docx au moment de la demande
-    except CVIllisible as erreur:
-        flash(str(erreur), "danger")
-        return redirect(url_for("main.history"))
-
-    existant = pitch.dernier_pitch(document, texte_cv)
-    if request.method == "POST":
-        if existant is None or request.form.get("regenerer") == "1":
-            try:
-                pitch.generer(document, texte_cv)
-            except pitch.PitchIndisponible as erreur:
-                flash(str(erreur), "danger")
-        # Retour sur la page d'analyse d'où vient le clic (adresses internes seulement : pas de redirection ouverte)
-        retour = request.form.get("retour", "")
-        if retour.startswith("/documents/") and "//" not in retour and "\\" not in retour:
-            return redirect(retour + "#pitch")
-        return redirect(url_for("main.pitch_audio", doc_id=doc_id))  # POST -> GET (pas de double envoi)
-    return render_template("pitch.html", document=document, pitch=existant)
-
-
-@bp.route("/documents/<int:doc_id>/pitch/<int:pitch_id>.wav")
-@login_required
-def pitch_fichier(doc_id, pitch_id):
-    """Sert le .wav uniquement à son propriétaire (404 sinon)."""
-    document = mon_document(doc_id)
-    enregistrement = Pitch.query.filter_by(id=pitch_id, document_id=document.id).first_or_404()
-    chemin = pitch.chemin_audio(enregistrement)
-    if not os.path.exists(chemin):
-        abort(404)
-    return send_file(chemin, mimetype="audio/wav", download_name="mon_pitch.wav")
 
 
 @bp.app_errorhandler(413)

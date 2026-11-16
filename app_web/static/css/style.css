@@ -283,10 +283,5 @@ select {
     td.action { text-align: left; }
 }
 
-/* Pitch audio (Sprint 4) */
-.pitch audio { width: 100%; margin-bottom: 1.25rem; }
-.texte-pitch { line-height: 1.7; white-space: pre-line; }
-.actions-pitch { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin-top: 1.25rem; }
-.actions-pitch form .btn { margin-top: 0; }
 td.action { white-space: nowrap; }
 td.action .btn + .btn { margin-left: .4rem; }
