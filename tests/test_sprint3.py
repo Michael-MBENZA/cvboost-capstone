@@ -282,7 +282,7 @@ def test_session_vocale_echange_sdp(connecte, app, monkeypatch):
     appels = session_ok(monkeypatch)
     page = connecte.get(f"/documents/{doc_id}/offres/OEM1/entretien").get_data(as_text=True)
     assert "Démarrer l'entretien" in page
-    assert "Question 1 / 6" in page and "6 questions" in page   # compteur de questions, plus de minuteur
+    assert "6 questions" in page and "Question 1 / 6" not in page   # page simple : ni minuteur ni compteur
     reponse = connecte.post(f"/documents/{doc_id}/offres/OEM1/entretien/session",
                             json={"sdp": "v=0 offre-du-navigateur"}).get_json()
     assert reponse["sdp"] == "v=0 reponse-sdp-openai"    # le navigateur reçoit le SDP, jamais la clé

@@ -21,14 +21,11 @@
             <h2>Amina, recruteuse</h2>
             <p class="discret" id="etat">Prête quand vous l'êtes.</p>
         </div>
-        <div class="minuteur" id="compteur">Question 1 / {{ nb_questions }}</div>
     </div>
 
     {% if cle_presente %}
-        <p>Amina a lu votre CV et l'annonce. Elle va vous poser <strong>{{ nb_questions }} questions</strong>
-           <strong>à voix haute</strong>, comme lors d'un vrai premier entretien RH : répondez simplement en parlant,
-           prenez le temps qu'il faut. Après votre dernière réponse, elle conclut et l'entretien se termine tout seul.
-           Votre navigateur va vous demander l'accès au micro. À la fin, vous recevez une note sur 100.</p>
+        <p>Amina va vous poser {{ nb_questions }} questions à voix haute. Répondez en parlant, comme dans un vrai
+           entretien. À la fin, vous recevez votre bilan.</p>
         <div class="filtre-actions">
             <button type="button" class="btn" id="demarrer">Démarrer l'entretien</button>
             <button type="button" class="btn btn-secondaire" id="terminer" hidden>Terminer l'entretien</button>
